@@ -191,6 +191,8 @@ struct IslandContainer: View {
             .animation(.easeInOut(duration: 0.25), value: state.mode == .compact && !stripActive)
         }
         .frame(width: islandWidth, height: islandHeight, alignment: .topLeading)
+        // The hand-off dot, above the strip and the main Mochi in both layouts.
+        .assistantHandoffOverlay(flight: assistant.flight)
         .onChange(of: state.mode) { oldMode, newMode in
             let shrinking = modeOrder(newMode) < modeOrder(oldMode)
             let anim = shrinking ? closeEase : openSpring

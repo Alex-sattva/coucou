@@ -48,14 +48,17 @@ struct AssistantMainMochi: View {
             HarnessMochiView(hex: session?.colorHex ?? "#E6E9EE",
                              state: session?.phase.mochiState ?? .idle,
                              diameter: max(1, canvas),
+                             hopToken: model.hopToken,
                              isPaused: !visible,
-                             showsDecor: inPanel)
+                             showsDecor: inPanel,
+                             blend: model.colorBlendRate)
                 .frame(width: canvas, height: canvas)
             if !inPanel, let hex = session?.statusDotHex {
                 AssistantStatusDot(hex: hex)
                     .offset(x: diameter * 0.5, y: -diameter * 0.38)
             }
         }
+        .assistantAnchor(AssistantAnchorKey.main)
         .position(x: centre.x, y: centre.y)
         // Idle motion stays inside the resting strip in compact, like BotPlacement's compact bot;
         // the panel keeps its full height.

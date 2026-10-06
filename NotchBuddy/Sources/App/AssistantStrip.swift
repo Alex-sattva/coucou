@@ -10,8 +10,10 @@ struct AssistantStrip: View {
     let isPaused: Bool
     let onSelect: (String) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        let subs = model.subs
+        let subs = model.displaySubs   // a slot in a hand-off still shows its old occupant
         let shown = min(subs.count, AssistantStripGeometry.maxVisibleSubs)
         let d = geometry.subDiameter
         let canvas = d / 0.6
@@ -21,13 +23,15 @@ struct AssistantStrip: View {
                 let s = subs[i]
                 ZStack {
                     AssistantSlotMochi(hex: s.colorHex, state: s.phase.mochiState.botState,
-                                       canvasSize: canvas, isPaused: isPaused)
+                                       canvasSize: canvas, isPaused: isPaused,
+                                       blendRate: reduceMotion ? HandoffPlanner.reducedMotionBlendRate : HandoffPlanner.quickBlendRate)
                     if let dot = s.statusDotHex {
                         AssistantStatusDot(hex: dot, size: 5.5)
                             .offset(x: d * 0.5, y: -d * 0.4)
                     }
                 }
                 .frame(width: AssistantStripGeometry.subSpacing, height: geometry.islandHeight)
+                .assistantAnchor(AssistantAnchorKey.slot(i))
                 .contentShape(Rectangle())
                 .onTapGesture { onSelect(s.id) }
                 .help("\(s.workspace)")

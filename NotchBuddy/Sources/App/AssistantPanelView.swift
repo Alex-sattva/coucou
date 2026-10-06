@@ -41,6 +41,7 @@ struct AssistantPanelView: View {
                     .padding(.top, 6)
 
                 card(for: content, main: main)
+                    .agentSwap(key: main?.id)
                     .padding(.top, 7)
                     .padding(.leading, AssistantPanelLayout.contentLeading)
                     .padding(.trailing, 18)
@@ -51,6 +52,9 @@ struct AssistantPanelView: View {
             Spacer(minLength: 0)
         }
         .frame(width: IslandConst.expandedWidth, alignment: .topLeading)
+        .background(alignment: .topLeading) {
+            if let hex = main?.colorHex { AssistantWash(hex: hex) }
+        }
         .overlay(alignment: .bottomLeading) {
             AssistantFooter(content: content, workspace: main?.workspace)
                 .padding(.leading, AssistantPanelLayout.contentLeading)
@@ -140,6 +144,7 @@ struct AssistantTopRow: View {
                     .onSubmit(onSubmit)
             } else {
                 Text(taskLine)
+                    .agentSwap(key: session?.id)
                     .font(.system(size: 15))
                     .foregroundColor(Color(hex: "#C5C8CD"))
                     .lineLimit(1)
