@@ -51,6 +51,9 @@ jobs:
       - name: Thread store tests
         run: bash scripts/test-thread-store.sh
 
+      - name: Agent session tests
+        run: bash scripts/test-agent-session.sh
+
       - name: Build
         run: |
           xcodebuild \
