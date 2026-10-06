@@ -1,0 +1,706 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway. Question: "With Quiet Spotlight, how do several agents running at once look?"
+  Base rules (decided): everything lives in A's panel; the panel stays folded into the notch while agents work,
+  and only opens when one needs you (approval), is blocked, or is done.
+  Three variants for the multi-agent part, switchable with the bottom bar or ← →.
+  Delete once a direction is chosen.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Agent Prototype</title>
+<style>
+
+:root{
+  --desk:#E2E4E8; --ink:#16171B; --muted:#5F646D; --line:#D1D4DA;
+  --spr:cubic-bezier(.32,1.22,.42,1); --ease:cubic-bezier(.45,0,.2,1);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  /* island palette (always dark: it is the notch) */
+  --i-bg:#000; --i-card:#121316; --i-line:#22242A; --i-text:#F2F3F5; --i-dim:#8C919B; --i-faint:#5A5F69;
+  --amber:#F5A524; --green:#34D399; --red:#F87171;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--desk:#131417; --ink:#ECEDEF; --muted:#9A9FA8; --line:#32353B} }
+:root[data-theme="dark"]{--desk:#131417; --ink:#ECEDEF; --muted:#9A9FA8; --line:#32353B}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--desk);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;padding-bottom:90px}
+button{font:inherit;color:inherit}
+
+.top{max-width:1180px;margin:0 auto;padding:24px 16px 14px;display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.top .grow{flex:1;min-width:260px}
+.top h1{margin:0;font-size:26px;letter-spacing:-.02em}
+.top p{margin:6px 0 0;color:var(--muted);font-size:14.5px;max-width:70ch;line-height:1.45}
+.top .tag{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);margin-right:6px;color:var(--muted)}
+.btn{appearance:none;border:0;background:var(--ink);color:var(--desk);padding:10px 18px;border-radius:999px;font-weight:600;font-size:14px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn[disabled]{opacity:.5;cursor:default}
+
+.stage-wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+.stage-outer{position:relative;width:100%}
+.stage{position:absolute;left:0;top:0;width:1120px;height:700px;transform-origin:0 0}
+.mac{position:absolute;inset:0;background:#050506;border-radius:28px;padding:12px;box-shadow:0 30px 60px -30px rgba(0,0,0,.45)}
+.screen{position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;
+  background:radial-gradient(1200px 520px at 18% 118%,#22324F 0%,transparent 60%),radial-gradient(900px 500px at 92% -10%,#33224A 0%,transparent 55%),linear-gradient(180deg,#0E1116,#0B0D12)}
+.menubar{position:absolute;inset:0 0 auto 0;height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:13px;color:rgba(255,255,255,.88);background:rgba(18,18,22,.35)}
+.menubar span{margin-right:16px}
+.term{position:absolute;left:70px;top:120px;width:560px;height:360px;border-radius:12px;background:rgba(22,23,27,.94);box-shadow:0 24px 50px -18px rgba(0,0,0,.7),0 0 0 .5px rgba(255,255,255,.12);font:12px/1.6 var(--mono);color:#B9BEC8;overflow:hidden}
+.term .tb{height:32px;display:flex;align-items:center;gap:7px;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.term .tb i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.term pre{margin:0;padding:12px 16px;white-space:pre-wrap}
+.editor{position:absolute;right:60px;top:170px;width:400px;height:300px;border-radius:12px;background:rgba(30,31,36,.92);box-shadow:0 24px 50px -18px rgba(0,0,0,.7),0 0 0 .5px rgba(255,255,255,.1);font:11.5px/1.7 var(--mono);color:#8B90A0;padding:44px 18px}
+
+/* the notch itself */
+.notch{position:absolute;left:50%;top:0;transform:translateX(-50%);background:#000;z-index:10;color:var(--i-text);
+  transition:width .5s var(--spr),height .5s var(--spr),border-radius .45s var(--spr)}
+.notch::before,.notch::after{content:"";position:absolute;top:0;width:14px;height:14px;pointer-events:none}
+.notch::before{left:-14px;background:radial-gradient(circle at 0 100%,transparent 13.5px,#000 14px)}
+.notch::after{right:-14px;background:radial-gradient(circle at 100% 100%,transparent 13.5px,#000 14px)}
+.notch.closing{transition:width .32s var(--ease),height .32s var(--ease),border-radius .3s ease}
+.cam{position:absolute;left:50%;top:11px;width:8px;height:8px;border-radius:50%;background:#101216;transform:translateX(-50%);box-shadow:inset 0 0 0 1.5px #16191f}
+.fade{transition:opacity .25s ease .18s}
+.hidden{opacity:0!important;pointer-events:none!important;transition-delay:0s!important}
+canvas.mochi{display:block}
+.hint{position:absolute;left:50%;transform:translateX(-50%);top:46px;font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;pointer-events:none;transition:opacity .3s}
+kbd{font:600 11px var(--font);padding:1px 6px;border-radius:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);color:var(--i-text)}
+
+/* shared bits */
+.shimmer{background:linear-gradient(90deg,var(--i-dim) 0%,#fff 45%,var(--i-dim) 70%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sh 1.6s linear infinite}
+@keyframes sh{from{background-position:120% 0}to{background-position:-80% 0}}
+.route{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--i-dim);padding:3px 9px 3px 7px;border-radius:999px;background:#17181C;border:1px solid var(--i-line);cursor:pointer;white-space:nowrap}
+.route i{width:7px;height:7px;border-radius:50%;background:var(--c,#888)}
+.route b{color:var(--i-text);font-weight:600}
+.mic{appearance:none;border:0;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#1C1D21;cursor:pointer;color:var(--i-text);flex:none}
+.mic.on{background:#fff;color:#000}
+.mic svg{width:14px;height:14px}
+.wave{display:flex;gap:2px;align-items:center;height:16px}
+.wave i{width:2.5px;border-radius:2px;background:currentColor;animation:wv .9s ease-in-out infinite}
+@keyframes wv{0%,100%{height:3px}50%{height:15px}}
+.ok{appearance:none;border:0;border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;cursor:pointer;background:#fff;color:#000}
+.no{appearance:none;border:1px solid var(--i-line);border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;cursor:pointer;background:transparent;color:var(--i-text)}
+.diff{font:11.5px var(--mono);color:var(--i-dim)}
+.diff .p{color:var(--green)} .diff .m{color:var(--red)}
+input.field{appearance:none;border:0;outline:0;background:transparent;color:var(--i-text);font:inherit;width:100%;min-width:0}
+input.field::placeholder{color:var(--i-faint)}
+
+/* ---------- Variant A: Spotlight ---------- */
+.A-bar{position:absolute;left:0;right:0;top:40px;display:flex;align-items:center;gap:12px;padding:0 16px 0 14px;height:44px}
+.A-bar .field{font-size:17px;letter-spacing:-.01em}
+.A-heard{font-size:17px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.A-sep{position:absolute;left:16px;right:16px;top:92px;height:1px;background:var(--i-line)}
+.A-body{position:absolute;left:0;right:0;top:100px;padding:6px 18px 0 62px;font-size:13.5px;line-height:1.5}
+.A-row{display:flex;align-items:center;gap:10px;min-height:28px}
+.A-row .dim{color:var(--i-dim)}
+.A-steps{margin:2px 0 0;padding:0;list-style:none;font-size:12.5px;color:var(--i-faint)}
+.A-steps li::before{content:"✓ ";color:var(--i-dim)}
+.A-ask{margin-top:8px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#1A1408;border:1px solid #3A2A0A}
+.A-ask .q{flex:1;color:#FBD38D}
+.A-ask code{font:12px var(--mono);color:#fff}
+.A-foot{position:absolute;left:62px;right:18px;bottom:12px;display:flex;justify-content:space-between;font-size:11.5px;color:var(--i-faint)}
+
+/* ---------- Variant B: Conversation ---------- */
+.B-head{position:absolute;left:18px;right:18px;top:38px;height:24px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--i-dim)}
+.B-left{position:absolute;left:14px;top:72px;width:120px;bottom:16px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.B-state{font-size:12px;color:var(--i-dim);text-align:center;line-height:1.35}
+.B-thread{position:absolute;left:140px;right:18px;top:68px;bottom:64px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;
+  -webkit-mask:linear-gradient(transparent,#000 28px);mask:linear-gradient(transparent,#000 28px)}
+.msg{max-width:82%;font-size:13.5px;line-height:1.45;animation:pop .45s var(--spr)}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}}
+.msg.me{align-self:flex-end;background:#26282E;padding:8px 12px;border-radius:16px 16px 4px 16px}
+.msg.me.live{color:var(--i-dim)}
+.msg.bot{align-self:flex-start;padding:2px 0}
+.work{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--i-dim);margin-top:4px;cursor:pointer}
+.work .n{font-size:11px;color:var(--i-faint);border:1px solid var(--i-line);border-radius:999px;padding:1px 7px}
+.B-card{margin-top:6px;padding:10px 12px;border-radius:14px;background:var(--i-card);border:1px solid var(--i-line)}
+.B-card .acts{display:flex;gap:8px;margin-top:8px}
+.B-input{position:absolute;left:140px;right:18px;bottom:16px;height:40px;display:flex;align-items:center;gap:10px;padding:0 6px 0 14px;border-radius:999px;background:#141518;border:1px solid var(--i-line);font-size:13.5px}
+
+/* ---------- Variant C: Captions ---------- */
+.C-ear{position:absolute;top:0;height:32px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--i-dim)}
+.C-ear.l{left:12px}.C-ear.r{right:14px}
+.C-caps{position:absolute;left:50%;top:62px;transform:translateX(-50%);width:640px;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:9}
+.cap{max-width:100%;text-align:center;font-size:19px;line-height:1.35;letter-spacing:-.01em;padding:6px 14px;border-radius:12px;background:rgba(0,0,0,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:#fff;
+  transition:opacity .4s ease,transform .4s var(--spr);pointer-events:auto}
+.cap.me{color:#A9AEB8;font-size:15px}
+.cap.sm{font-size:13px;color:var(--i-dim);display:flex;gap:10px;align-items:center}
+.cap.gone{opacity:0;transform:translateY(-6px)}
+.C-type{position:absolute;left:50%;top:50px;transform:translateX(-50%);width:420px;height:36px;border-radius:12px;background:rgba(0,0,0,.85);border:1px solid #2A2C32;display:flex;align-items:center;padding:0 12px;gap:8px;z-index:11;font-size:14px;color:#fff}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--c,#888);box-shadow:0 0 8px var(--c,#888)}
+
+/* switcher (prototype chrome, not part of the design) */
+.switcher{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:4px;padding:5px;border-radius:999px;background:#FF3D7F;color:#fff;box-shadow:0 10px 30px -8px rgba(0,0,0,.5);z-index:100;font-size:13.5px;font-weight:600;max-width:calc(100vw - 32px)}
+.switcher button{appearance:none;border:0;background:rgba(255,255,255,.18);color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:15px;flex:none}
+.switcher span{padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:640px){ .top h1{font-size:21px} }
+
+/* multi-agent additions */
+/* E — particle hand-off (from harness-main-voice.html / HarnessVoiceView.swift) */
+@property --wash{syntax:'<color>';inherits:true;initial-value:rgba(0,0,0,0)}
+.wash{position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(70% 120% at 40px 64px,var(--wash) 0%,transparent 70%);transition:--wash .6s ease,opacity .3s ease;opacity:0}
+.notch.E.isopen .wash{opacity:1}
+.pdot{position:absolute;left:0;top:0;border-radius:50%;pointer-events:none;z-index:5}
+.mo-handoff .cm2:not(.ismain),.mo-handoff .cm2:not(.ismain) canvas{transition:opacity .2s ease,background .2s ease,border-color .2s ease!important}
+.mo-handoff .cm2.ismain,.mo-handoff .cm2.ismain canvas{transition:left .35s cubic-bezier(.25,.8,.25,1),top .35s cubic-bezier(.25,.8,.25,1),width .35s cubic-bezier(.25,.8,.25,1),height .35s cubic-bezier(.25,.8,.25,1),opacity .2s ease!important}
+.bswap{animation:bswap .32s ease}
+@keyframes bswap{from{opacity:0;filter:blur(8px);transform:scale(.97)}}
+
+/* E — motion picker */
+.mbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:12px;font-size:13px;color:var(--muted)}
+.mbar button{appearance:none;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
+.mbar button.on{background:var(--ink);color:var(--desk);border-color:var(--ink)}
+#mDesc{margin-top:6px;font-size:13.5px}
+.mo-glide .cm2,.mo-glide .cm2 canvas{transition:left .3s cubic-bezier(.25,.8,.25,1),top .3s cubic-bezier(.25,.8,.25,1),opacity .2s ease,background .2s ease,border-color .2s ease!important}
+.mo-fade .cm2,.mo-fade .cm2 canvas,.mo-still .cm2,.mo-still .cm2 canvas,.mo-main .cm2:not(.ismain),.mo-main .cm2:not(.ismain) canvas{transition:opacity .16s ease,background .2s ease,border-color .2s ease!important}
+.mo-main .cm2.ismain,.mo-main .cm2.ismain canvas{transition:left .35s cubic-bezier(.25,.8,.25,1),top .35s cubic-bezier(.25,.8,.25,1),width .35s cubic-bezier(.25,.8,.25,1),height .35s cubic-bezier(.25,.8,.25,1),opacity .16s ease!important}
+.crewL:not(.mo-spring) .cm2.born,.crewL:not(.mo-spring) .cm2.gone{transform:none}
+.crewL:not(.mo-spring) .cm2 .lbl2{transition:opacity .2s ease!important}
+
+/* E — motion copied from the shipping island: spring to open, quick ease to close, shapes morph */
+.cm2{position:absolute;border-radius:999px;border:1px solid transparent;background:transparent;cursor:pointer;opacity:1;
+  transition:left .52s var(--spr) var(--d,0s),top .52s var(--spr) var(--d,0s),width .52s var(--spr) var(--d,0s),height .52s var(--spr) var(--d,0s),
+    background .35s ease,border-color .35s ease,transform .5s var(--spr),opacity .3s ease}
+.cm2 canvas{position:absolute;transition:left .52s var(--spr) var(--d,0s),top .52s var(--spr) var(--d,0s),width .52s var(--spr) var(--d,0s),height .52s var(--spr) var(--d,0s)}
+.crewL.closing .cm2,.crewL.closing .cm2 canvas{transition-duration:.34s;transition-timing-function:cubic-bezier(.45,0,.2,1);transition-delay:0s}
+.cm2.pill{background:var(--bg);border-color:var(--bd)}
+.cm2 .lbl2{position:absolute;left:36px;right:10px;top:50%;transform:translateY(-50%);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .15s ease;display:flex;align-items:center;gap:6px}
+.cm2.pill .lbl2{opacity:1;transition:opacity .3s ease calc(.22s + var(--d,0s))}
+.cm2 .lbl2 small{margin-left:auto;font-size:10.5px;color:var(--i-dim)}
+.cm2 .lbl2 small.approval{color:var(--amber)} .cm2 .lbl2 small.blocked{color:var(--red)} .cm2 .lbl2 small.done{color:var(--green)}
+.cm2.pill:hover{transform:scale(1.03)}
+.cm2.born{transform:scale(.01);opacity:0}
+.cm2.gone{transform:scale(.01);opacity:0;transition:transform .34s cubic-bezier(.45,0,.2,1),opacity .3s ease}
+.cm2 .bd{position:absolute;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1.5px #000;transform:scale(0);transition:transform .35s var(--spr),left .52s var(--spr),top .52s var(--spr)}
+.cm2.w .bd{background:var(--amber);transform:scale(1)} .cm2.b .bd{background:var(--red);transform:scale(1)} .cm2.d .bd{background:var(--green);transform:scale(1)}
+.cm2.pill .bd{display:none}
+.vin{animation:vin .4s var(--spr) .16s backwards}
+@keyframes vin{from{opacity:0;transform:scale(.97)}}
+.notch.G3 .A-body{right:186px} .notch.G3 .A-foot{right:200px}
+
+.wt{font:11.5px var(--font);color:#8B90A0;margin-left:10px}
+.ctxw{cursor:pointer;transition:box-shadow .3s ease}
+.ctxw.cur{box-shadow:0 24px 50px -18px rgba(0,0,0,.7),0 0 0 1.5px rgba(255,255,255,.45)!important}
+.ctxw.cur .wt{color:#E9EAEE}
+.notch.E #av{display:block;width:52px;height:34px;flex:none}
+.cm.main .bob::before{content:"";position:absolute;left:4px;right:4px;bottom:-3px;height:5px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.35),transparent);opacity:0;transition:opacity .4s}
+.cm.main .bob::before{opacity:1}
+.ctxtag{position:absolute;left:50%;transform:translateX(-50%);top:40px;font-size:11.5px;color:rgba(255,255,255,.6);white-space:nowrap;pointer-events:none;transition:opacity .3s;z-index:9}
+
+/* D — one travelling element per Mochi */
+.crewL{position:absolute;left:50%;top:0;width:0;height:0;z-index:12}
+.cm{position:absolute;left:0;top:0;width:32px;height:32px;cursor:pointer;will-change:transform;
+  transition:transform .38s cubic-bezier(.25,.8,.25,1),opacity .25s ease}
+.cm.instant{transition:none}
+.cm .bob{width:32px;height:32px;position:relative;line-height:0}
+.cm .bob canvas{width:32px!important;height:32px!important}
+.cm .bob::after{content:"";position:absolute;right:1px;top:2px;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1.5px #000;transform:scale(0);transition:transform .35s var(--spr)}
+.cm.w .bob::after{background:var(--amber);transform:scale(1)} .cm.b .bob::after{background:var(--red);transform:scale(1)} .cm.d .bob::after{background:var(--green);transform:scale(1)}
+.cm .lbl{position:absolute;left:50%;top:33px;transform:translateX(-50%);font-size:10px;color:var(--i-faint);white-space:nowrap;opacity:0;transition:opacity .25s ease,color .25s}
+.cm.col .lbl{opacity:1;transition-delay:.15s}
+.cm.on .lbl{color:var(--i-text)}
+.cm.jump .bob{animation:jump .45s ease}
+@keyframes jump{0%,100%{transform:none}40%{transform:translateY(-3px)}}
+.cm.leaving{transition:transform .3s ease,opacity .25s ease;opacity:0}
+.hl{position:absolute;left:0;top:0;width:56px;height:52px;border-radius:14px;background:#1E1F25;box-shadow:inset 0 0 0 1px #2A2C33;opacity:0;
+  transition:transform .3s ease,opacity .2s ease}
+.spark{position:absolute;left:0;top:0;width:5px;height:5px;border-radius:50%;background:var(--c);pointer-events:none;animation:spark .7s cubic-bezier(.2,.7,.3,1) forwards}
+@keyframes spark{from{transform:translate(var(--x0),var(--y0)) scale(1);opacity:1}to{transform:translate(var(--x1),var(--y1)) scale(.2);opacity:0}}
+.swap{animation:swap .2s ease}
+@keyframes swap{from{opacity:0}}
+.notch.G2 #av{display:none} .notch.G2 .A-bar{left:74px} .notch.G2 .A-sep{left:84px} .notch.G2 .A-body{left:74px;padding-left:14px} .notch.G2 .A-foot{left:88px}
+
+.notch.G #av{display:none} .notch.G .A-bar{left:74px} .notch.G .A-sep{left:84px} .notch.G .A-body{left:74px;padding-left:14px} .notch.G .A-foot{left:88px}
+.side{position:absolute;left:10px;top:38px;bottom:12px;width:62px;display:flex;flex-direction:column;gap:2px;align-items:center;border-right:1px solid var(--i-line);padding-right:8px}
+.side span{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10px;color:var(--i-faint);padding:4px 2px 5px;border-radius:12px;cursor:pointer;width:54px;position:relative;transition:background .2s}
+.side span:hover{background:#15161A}
+.side span.sel{background:#1C1D22;color:var(--i-text)}
+.side span::after,.ear-m::after{content:"";position:absolute;right:8px;top:4px;width:7px;height:7px;border-radius:50%;box-shadow:0 0 0 1.5px #000;display:none}
+.ear-m{position:relative;line-height:0}
+.ear-m::after{right:-1px;top:2px}
+.side span.w::after,.ear-m.w::after{display:block;background:var(--amber)}
+.side span.b::after,.ear-m.b::after{display:block;background:var(--red)}
+.side span.d::after,.ear-m.d::after{display:block;background:var(--green)}
+.C-ear.split{gap:2px}
+
+.adot{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
+.adot.working{animation:pulse 1.4s ease-in-out infinite}
+.adot.approval{box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--amber)}
+.adot.blocked{box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--red)}
+.adot.done{background:var(--green)}
+@keyframes pulse{50%{opacity:.3}}
+.pager{display:inline-flex;align-items:center;gap:6px;color:var(--i-dim)}
+.pager button{appearance:none;border:1px solid var(--i-line);background:transparent;color:var(--i-text);width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1}
+.others{display:inline-flex;gap:12px;align-items:center}
+.others span{display:inline-flex;gap:6px;align-items:center}
+.roster{position:absolute;left:12px;top:40px;bottom:14px;width:182px;display:flex;flex-direction:column;gap:3px;padding-right:10px;border-right:1px solid var(--i-line)}
+.rrow{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;font-size:12.5px;cursor:pointer;color:var(--i-dim);transition:background .2s}
+.rrow:hover{background:#15161A}
+.rrow b{color:var(--i-text);font-weight:600}
+.rrow.on{background:#1C1D22}
+.rrow .st{margin-left:auto;font-size:11px}
+.rrow .st.approval{color:var(--amber)} .rrow .st.blocked{color:var(--red)} .rrow .st.done{color:var(--green)}
+.notch.F .A-bar{left:196px} .notch.F .A-sep{left:210px} .notch.F .A-body{left:196px} .notch.F .A-foot{left:258px}
+.cnt{min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:#1C1D22;color:var(--i-text);display:inline-grid;place-items:center;font-weight:700;font-size:11.5px}
+.cnt.hot{background:var(--amber);color:#000}
+.crew{display:flex;gap:2px;align-items:center}
+.crew span{position:relative;border-radius:50%;cursor:pointer;line-height:0;padding:1px;transition:transform .3s var(--spr)}
+.crew span.sel{box-shadow:0 0 0 1.5px rgba(255,255,255,.8)}
+.crew span.w::after{content:"";position:absolute;right:0;top:1px;width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 1.5px #000}
+.crew span.b::after{content:"";position:absolute;right:0;top:1px;width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 0 1.5px #000}
+.crew span.d::after{content:"";position:absolute;right:0;top:1px;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 1.5px #000}
+.amb{color:var(--amber)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="grow">
+    <h1 id="vTitle">—</h1>
+    <p id="vDesc"></p>
+    <div class="mbar" id="mbar"></div><p id="mDesc"></p>
+    <p style="margin-top:8px"><span class="tag">Click the buttons in the panel to answer · Esc hides it until something new comes in · / gives a new task</span></p>
+  </div>
+  <button class="btn ghost" id="resetBtn">Reset</button>
+  <button class="btn" id="demoBtn">▶ Start 3 agents</button>
+</div>
+
+<div class="stage-wrap"><div class="stage-outer" id="stageOuter"><div class="stage" id="stage">
+  <div class="mac"><div class="screen" id="screen">
+    <div class="menubar"><div><span></span><b>Ghostty</b><span style="margin-left:16px">Shell</span><span>Edit</span><span>View</span></div><div><span>⌁ 82%</span><span>Tue 6 Oct 14:20</span></div></div>
+    <div class="term ctxw" data-ws="coucou"><div class="tb"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span class="wt">coucou — claude</span></div><pre>~/code/coucou <span style="color:#7CC7FF">feature/voice-harness</span>
+❯ <span style="color:#E9EAEE">git status</span>
+On branch feature/voice-harness
+nothing to commit, working tree clean
+❯ </pre></div>
+    <div class="editor ctxw" data-ws="portfolio"><span class="wt" style="position:absolute;left:16px;top:14px">portfolio — index.astro</span>---<br>import Hero from "../components/Hero.astro";<br>const projects = await getCollection("projects");<br>---<br>&lt;Hero title="Louis Raille" /&gt;<br>&lt;Grid items={projects} /&gt;</div>
+    <div class="term ctxw" data-ws="korus" style="left:300px;top:430px;width:420px;height:190px"><div class="tb"><i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i><span class="wt">korus — schema.prisma</span></div><pre>model Invoice {
+  id        String   @id @default(cuid())
+  amount    Decimal
+  issuedAt  DateTime
+}</pre></div>
+    <div id="variantRoot"></div>
+  </div></div>
+</div></div></div>
+
+<div class="switcher" role="toolbar" aria-label="Prototype variant switcher">
+  <button id="prevV" aria-label="Previous variant">←</button><span id="vLabel">A</span><button id="nextV" aria-label="Next variant">→</button>
+</div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const NOW=()=>performance.now();
+const lerp=(a,b,k)=>a+(b-a)*k, clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const hex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const MIC='<svg viewBox="0 0 16 16" fill="currentColor"><rect x="5.5" y="1" width="5" height="9" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><rect x="7.3" y="12" width="1.4" height="3" rx=".7"/></svg>';
+const WAVE='<span class="wave">'+[0,.15,.3,.1,.25].map(d=>`<i style="animation-delay:${d}s"></i>`).join('')+'</span>';
+
+
+/* ------------ Mochi (simplified canvas renderer, same look as the app) ------------ */
+const MOCHIS=new Set();
+const TINT={idle:null,listening:'#38BDF8',thinking:'#A78BFA',working:'#6366F1',approval:'#F5A524',blocked:'#F87171',done:'#34D399',speaking:null};
+// the voice-harness prototype's hopPose(): 900 ms of squash-stretch, quadratic in/out between keys
+function hopPose(e){ const K=[[0,1,1],[.25,1.25,.72],[.5,.88,1.15],[.75,1.06,.94],[1,1,1]]; for(let i=0;i<K.length-1;i++){ if(e<=K[i+1][0]){ const u=(e-K[i][0])/(K[i+1][0]-K[i][0]); const eu=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2; return [lerp(K[i][1],K[i+1][1],eu),lerp(K[i][2],K[i+1][2],eu)] } } return [1,1] }
+class Mochi{
+  constructor(size,color){ this.bc=color?hex(color):null; this.bcT=this.bc; this.c=document.createElement('canvas'); this.c.className='mochi'; this.size=size;
+    const d=Math.min(2,devicePixelRatio||1); this.c.width=this.c.height=size*d; this.c.style.width=this.c.style.height=size+'px';
+    this.x=this.c.getContext('2d'); this.state='idle'; this.col=[255,255,255]; this.tint=0; this.blinkAt=NOW()+1500; this.open=1; this.hop=0; this.t0=NOW()-Math.random()*4000; MOCHIS.add(this) }
+  set(s){ if(s===this.state) return; this.state=s; this.hop=1 }
+  setColor(h,rate=.12){ this.bcT=hex(h); this.rate=rate; if(!this.bc) this.bc=[...this.bcT] }
+  hopNow(){ this.hopT=NOW() }
+  draw(n){
+    const x=this.x,W=this.c.width,t=(n-this.t0)/1000,s=this.state; x.clearRect(0,0,W,W);
+    const target=TINT[s]; if(target){ this.col=this.col.map((v,i)=>lerp(v,hex(target)[i],.08)); this.tint=lerp(this.tint,.85,.08) } else this.tint=lerp(this.tint,0,.08);
+    this.hop=Math.max(0,this.hop-.035);
+    let sx=1,sy=1,oy=0,tilt=0,lx=0,ly=0;
+    if(s==='listening'){ const b=Math.sin(t*3.9)*.035; sy=1+b; sx=1-b*.6; ly=-.15 }
+    if(s==='thinking'){ lx=.5; ly=-.45; tilt=-.06 }
+    if(s==='working'){ tilt=Math.sin(t*5.2)*.07; oy=-Math.abs(Math.sin(t*5.2))*.05; lx=Math.sin(t*1.3)*.4 }
+    if(s==='speaking'){ const c=Math.abs(Math.sin(t*12.5)); sy=1-c*.06; sx=1+c*.05 }
+    if(s==='approval'){ oy=-Math.abs(Math.sin(t*5))*.07; ly=.1 }
+    if(s==='blocked'){ ly=.35; tilt=.08 }
+    if(this.hop>0){ const h=Math.sin(this.hop*Math.PI); sy*=1-h*.12; sx*=1+h*.09 }
+    if(this.bcT&&this.bc) this.bc=this.bc.map((v,i)=>lerp(v,this.bcT[i],this.rate||.12));
+    if(this.hopT){ const e=(n-this.hopT)/900; if(e>=1) this.hopT=0; else { const [hx,hy]=hopPose(e); sx*=hx; sy*=hy; oy-=Math.sin(e*Math.PI)*.1 } }
+    const R=W*.3, rx=R*1.14, ry=R*.88, cx=W/2, cy=W/2+R*.08+oy*R;
+    x.save(); x.translate(cx,cy+ry); x.rotate(tilt); x.scale(sx,sy); x.translate(0,-ry);
+    const p=new Path2D(); for(let i=0;i<=72;i++){ const a=i/72*Math.PI*2,ca=Math.cos(a),sa=Math.sin(a); const px=rx*Math.sign(ca)*Math.pow(Math.abs(ca),2/2.7), py=ry*Math.sign(sa)*Math.pow(Math.abs(sa),2/2.7); i?p.lineTo(px,py):p.moveTo(px,py) } p.closePath();
+    let g=x.createLinearGradient(rx*.7,-ry*.85,-rx*.8,ry*.9); if(this.bc){ g.addColorStop(0,rgba(this.bc.map(v=>v+(255-v)*.4),1)); g.addColorStop(1,rgba(this.bc,1)) } else { g.addColorStop(0,'#FFFFFF'); g.addColorStop(1,'#DADDE4') } x.fillStyle=g; x.fill(p);
+    if(this.tint>.02&&!this.bc){ g=x.createLinearGradient(0,ry,0,-ry*.3); g.addColorStop(0,rgba(this.col,.9*this.tint)); g.addColorStop(1,rgba(this.col,0)); x.fillStyle=g; x.fill(p) }
+    g=x.createRadialGradient(rx*.34,-ry*.46,0,rx*.34,-ry*.46,R*.42); g.addColorStop(0,'rgba(255,255,255,.6)'); g.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=g; x.fill(p);
+    x.save(); x.clip(p); x.fillStyle='rgba(255,120,150,.32)'; for(const d of[-1,1]){ x.beginPath(); x.ellipse(d*rx*.55+lx*R*.15,ry*.22,R*.17,R*.1,0,0,7); x.fill() } x.restore();
+    if(n>this.blinkAt){ this.blinkAt=n+2400+Math.random()*2600; this.bs=n }
+    const bk=this.bs?clamp((n-this.bs)/180,0,1):1; this.open=bk<1?Math.abs(Math.cos(bk*Math.PI)):1;
+    x.fillStyle='#1A1B1F'; x.strokeStyle='#1A1B1F';
+    for(const d of[-1,1]){ const ex=d*R*.42+lx*R*.22, ey=-R*.06+ly*R*.22, w=R*.18, h=R*.34;
+      if(s==='done'){ x.lineWidth=w*.5; x.lineCap='round'; x.beginPath(); x.arc(ex,ey+h*.15,w*.8,Math.PI*1.12,Math.PI*1.88); x.stroke(); continue }
+      const hh=Math.max(h*this.open*(s==='approval'?1.1:1),w*.35); x.beginPath(); x.roundRect(ex-w/2,ey-hh/2,w,hh,Math.min(w/2,hh/2)); x.fill() }
+    x.restore();
+    if(s==='thinking'){ for(let i=0;i<3;i++){ const ph=((t*2.2-i*.25)%1+1)%1; x.fillStyle=`rgba(255,255,255,${.35+.6*Math.max(0,Math.sin(ph*Math.PI*2))})`; x.beginPath(); x.arc(cx+rx*.7+i*R*.22,cy-ry*1.05-i*R*.12,R*.06+i*R*.015,0,7); x.fill() } }
+  }
+}
+(function loop(){ const n=NOW(); for(const m of MOCHIS){ if(m.c.isConnected) m.draw(n) } requestAnimationFrame(loop) })();
+
+
+/* ------------ agents engine ------------ */
+const PLANS=[
+  {ws:'coucou', agent:'Claude Code', c:'#FF6B5B', task:'Add a dark mode toggle to Settings',
+   steps:['Reading SettingsView.swift','Adding appearance setting','Editing AppState.swift'],
+   plan:[['work',4200],['approval',{q:'Can I run <code>xcodebuild -scheme NotchBuddy</code>?'}],['work',2200],['done',{reply:'Done. There’s a new “Appearance” toggle in Settings, and the build passes.',files:[['SettingsView.swift',18,2],['AppState.swift',6,0]]}]]},
+  {ws:'korus', agent:'OpenCode', c:'#2DD4A7', task:'Migrate the invoices table to the new schema',
+   steps:['Reading schema.prisma','Writing the migration','Updating invoice tests'],
+   plan:[['work',2600],['approval',{q:'Can I run <code>prisma migrate dev</code> on the local database?'}],['work',3000],['done',{reply:'Migration applied locally. All 42 invoice tests pass.',files:[['schema.prisma',11,4],['migration.sql',23,0]]}]]},
+  {ws:'portfolio', agent:'OpenCode', c:'#38BDF8', task:'Compress the project images',
+   steps:['Scanning /public/projects','Converting to WebP','Updating image paths'],
+   plan:[['work',6000],['blocked',{error:'sharp: unsupported image format in hero.heic'}],['work',2400],['done',{reply:'All 31 images are now WebP. The page weight dropped from 14 MB to 3.2 MB.',files:[['projects.json',31,31]]}]]}
+];
+let ctx='coucou'; let agents=[], seq=0, epoch=0, summoned=false, dismissedSig=null, sel=null, hover=false, V=null, autoT=null;
+const render=()=>V&&V.render();
+const WORD={working:'working',approval:'needs you',blocked:'blocked',done:'done'};
+function addAgent(p){ const a={...p,id:p.ws+(++seq),phase:'working',step:p.steps[0],done:[],seen:false,attnAt:0,resolve:null}; agents.push(a); runAgent(a,epoch); render(); return a }
+async function runAgent(a,my){
+  for(const [k,arg] of a.plan){ if(my!==epoch) return;
+    if(k==='work'){ const n=Math.max(1,Math.round(arg/1000)); for(let i=0;i<n;i++){ a.step=a.steps[a.done.length%a.steps.length]; render(); await sleep(arg/n); if(my!==epoch) return; a.done.push(a.step) } }
+    else if(k==='approval'||k==='blocked'){ a.phase=k; a.info=arg; a.attnAt=++seq; render();
+      const ok=await new Promise(r=>a.resolve=r); if(my!==epoch) return; a.resolve=null;
+      if(!ok){ a.phase='done'; a.reply=k==='approval'?'Okay, I skipped that step. Everything else is in place.':'Stopped. Nothing else was changed.'; a.files=[]; a.attnAt=++seq; render(); return }
+      a.phase='working'; a.step=k==='blocked'?'Working around the error':'Running it'; render() }
+    else if(k==='done'){ a.phase='done'; a.reply=arg.reply; a.files=arg.files; a.attnAt=++seq; render() } }
+}
+const needs=a=>a.phase==='approval'||a.phase==='blocked'||(a.phase==='done'&&!a.seen);
+function queue(){ return agents.filter(needs).sort((x,y)=>((x.phase==='done')-(y.phase==='done'))||(x.attnAt-y.attnAt)) }
+function focus(){ if(sel){ const a=agents.find(a=>a.id===sel); if(a&&!a.seen) return a; sel=null } return queue()[0]||null }
+function sig(){ if(V&&V.sig) return V.sig(); return queue().map(a=>a.id+a.phase).join() }
+function isOpen(){ if(V&&V.isOpen) return V.isOpen(); return summoned || (sel&&V.allowPeek) || (queue().length>0 && sig()!==dismissedSig) }
+function decide(id,ok){ const a=agents.find(x=>x.id===id); if(a&&a.resolve){ sel=null; a.resolve(ok) } }
+function ack(id){ const a=agents.find(x=>x.id===id); if(!a) return; a.seen=true; if(sel===id) sel=null; render(); setTimeout(()=>{ agents=agents.filter(x=>x!==a); render() },500) }
+function dismiss(){ summoned=false; sel=null; dismissedSig=sig(); render() }
+function urgent(){ if(agents.some(a=>a.phase==='approval')) return 'approval'; if(agents.some(a=>a.phase==='blocked')) return 'blocked'; if(agents.some(a=>a.phase==='working')) return 'working'; if(agents.some(a=>a.phase==='done'&&!a.seen)) return 'done'; return 'idle' }
+function reset(){ epoch++; agents=[]; summoned=false; dismissedSig=null; sel=null; render() }
+function newTask(text){ const r=route(text); addAgent({ws:r.ws,agent:r.agent,c:r.c,task:text,steps:['Reading the project','Making the change','Checking the result'],plan:[['work',4500],['done',{reply:'Done. I made the change and checked it.',files:[['index.ts',9,3]]}]]}) }
+const ROUTES=[{re:/coucou|notch|mochi|settings|swift/i,agent:'Claude Code',ws:'coucou',c:'#FF6B5B'},{re:/korus|invoice|prisma/i,agent:'OpenCode',ws:'korus',c:'#2DD4A7'},{re:/portfolio|site|image/i,agent:'OpenCode',ws:'portfolio',c:'#38BDF8'}];
+const route=t=>ROUTES.find(r=>r.re.test(t))||ROUTES[0];
+
+/* shared panel pieces */
+const MCACHE={};
+function mochiFor(a,size){ const k=a.id+':'+size; if(!MCACHE[k]) MCACHE[k]=new Mochi(size,a.c); MCACHE[k].set(a.phase==='done'?'done':a.phase); return MCACHE[k] }
+function bodyFor(a){
+  if(!a) return '';
+  if(a.phase==='approval') return `<div class="A-row dim">${a.done.length} steps done</div><div class="A-ask"><span class="q">${a.info.q}</span><button class="no" data-no="${a.id}">Deny</button><button class="ok" data-ok="${a.id}">Allow ⏎</button></div>`;
+  if(a.phase==='blocked') return `<div class="A-row" style="color:#FCA5A5">I hit an error I can’t get past on my own.</div><div class="A-row diff">${esc(a.info.error)}</div><div class="A-row" style="gap:8px;margin-top:4px"><button class="ok" data-ok="${a.id}">Try to fix it ⏎</button><button class="no" data-no="${a.id}">Stop</button><u class="dim" style="font-size:12.5px;cursor:pointer">Open in terminal</u></div>`;
+  if(a.phase==='done') return `<div class="A-row" style="font-size:14.5px">${esc(a.reply)}</div>${a.files.length?`<div class="A-row diff">${a.files.map(f=>`${f[0]} <span class="p">+${f[1]}</span> <span class="m">−${f[2]}</span>`).join(' &nbsp; ')} · <u style="cursor:pointer">Open diff</u></div>`:''}<div class="A-row" style="margin-top:2px"><button class="no" data-ack="${a.id}">Got it</button></div>`;
+  return `<div class="A-row"><span class="shimmer">${a.step}…</span></div><div class="A-row dim" style="font-size:12.5px">${a.done.length} steps done · you’ll hear from it when it needs you</div>`;
+}
+function panelHeight(a,extra=0){ if(!a) return 112+extra; return ({approval:236,blocked:262,done:248,working:200})[a.phase]+extra }
+function wire(root){
+  root.querySelectorAll('[data-ok]').forEach(b=>b.onclick=e=>{e.stopPropagation(); decide(b.dataset.ok,true)});
+  root.querySelectorAll('[data-no]').forEach(b=>b.onclick=e=>{e.stopPropagation(); decide(b.dataset.no,false)});
+  root.querySelectorAll('[data-ack]').forEach(b=>b.onclick=e=>{e.stopPropagation(); ack(b.dataset.ack)});
+  root.querySelectorAll('[data-sel]').forEach(b=>b.onclick=e=>{e.stopPropagation(); sel=b.dataset.sel; summoned=false; render()});
+}
+function baseMarkup(extra=''){ return `<div class="notch" id="n"><div class="cam"></div>
+  <div class="C-ear l fade" id="el"></div><div class="C-ear r fade" id="er"></div>
+  <div class="A-bar fade" id="bar"><span id="av"></span><input class="field" id="in" placeholder="Give Mochi a new task…" autocomplete="off"><div class="A-heard" id="task"></div><span id="rt"></span><button class="mic" aria-label="Push to talk">${MIC}</button></div>
+  <div class="A-sep fade" id="sep"></div><div class="A-body fade" id="body"></div><div class="A-foot fade" id="foot"></div>${extra}</div>
+  <div class="hint" id="hint">Press <kbd>▶ Start 3 agents</kbd>, or <kbd>/</kbd> to give a task</div>` }
+function baseMount(root,cls){
+  const n=$('#n',root); if(cls) n.classList.add(cls);
+  const inp=$('#in',root); inp.onkeydown=e=>{ if(e.key==='Enter'&&inp.value.trim()){ const v=inp.value; inp.value=''; summoned=false; newTask(v) } if(e.key==='Escape') dismiss() };
+  n.onmouseenter=()=>hover=true; n.onmouseleave=()=>hover=false;
+  n.onclick=()=>{ if(!isOpen()){ summoned=true; render(); setTimeout(()=>inp.focus(),250) } };
+  return {n,inp};
+}
+/* fills the top row + body for the focused agent; returns {open,a} */
+function paintPanel(root,P,avatarSize,colored){
+  const a=focus(), open=isOpen(), showInput=summoned&&!sel;
+  const r=root;
+  $('#hint',r).classList.toggle('hidden',open||agents.length>0);
+  for(const id of['bar','foot']) $('#'+id,r).classList.toggle('hidden',!open);
+  for(const id of['sep','body']) $('#'+id,r).classList.toggle('hidden',!open||showInput||!a);
+  const quiet=!open&&agents.length>0; for(const id of['el','er']) $('#'+id,r).classList.toggle('hidden',!quiet);
+  P.inp.style.display=showInput||!a?'':'none'; $('#task',r).style.display=showInput||!a?'none':'';
+  $('#task',r).textContent=a?a.task:'';
+  $('#rt',r).innerHTML=a&&!showInput?`<span class="route" style="--c:${a.c}"><i></i><b>${a.agent}</b> · ${a.ws}</span>`:'';
+  const av=$('#av',r); const m=a&&!showInput?(colored?mochiFor(a,avatarSize):P.main):P.main; if(av.firstChild!==m.c){ av.innerHTML=''; av.appendChild(m.c) }
+  P.main.set(urgent());
+  const b=$('#body',r), html=showInput?'':bodyFor(a); if(b.dataset.h!==html){ b.innerHTML=html; b.dataset.h=html }
+  wire(r);
+  // a finished answer folds away by itself after ~8 s on screen, unless you're on it
+  if(open&&a&&a.phase==='done'&&!summoned&&!a.shownAt){ a.shownAt=1; const tick=()=>{ if(a.seen) return; if(hover||focus()!==a||!isOpen()){ setTimeout(tick,2000); return } ack(a.id) }; setTimeout(tick,8000) }
+  return {open,a,quiet,showInput};
+}
+
+/* ------------ A — Dots: one dot per agent, pager in the panel ------------ */
+const VariantA={ key:'A', name:'Dots + pager',
+  desc:'Quiet notch: Mochi on the left, one coloured dot per agent on the right. A dot pulses while that agent works and gets a ring when it needs you. When the panel opens it shows one thing at a time. A pager says “1 of 3 need you”, and the bottom line names the agents that are still working quietly.',
+  mount(root){ root.innerHTML=baseMarkup(); this.P=baseMount(root); this.P.main=new Mochi(34); this.ear=new Mochi(26); $('#el',root).appendChild(this.ear.c); this.root=root },
+  render(){ const r=this.root, P=this.P; const {open,a,quiet,showInput}=paintPanel(r,P,34,false); const q=queue();
+    P.n.classList.toggle('closing',!open); P.n.style.width=(open?600:quiet?360:184)+'px'; P.n.style.height=(open?(showInput?112:panelHeight(a)):32)+'px'; P.n.style.borderRadius=open?'0 0 26px 26px':'0 0 12px 12px';
+    this.ear.set(urgent());
+    const nq=q.filter(x=>x.phase!=='done').length;
+    $('#er',r).innerHTML=`<span class="others" style="gap:5px">${agents.map(x=>`<span class="adot ${x.seen?'':x.phase}" style="--c:${x.c}"></span>`).join('')}</span><span class="${nq?'amb':''}" style="margin-left:4px">${nq?`${nq} need${nq>1?'':'s'} you`:`${agents.filter(x=>x.phase==='working').length} working`}</span>`;
+    const i=a?q.indexOf(a):-1, rest=agents.filter(x=>x.phase==='working');
+    $('#foot',r).innerHTML= showInput? `<span>${agents.length} running · <kbd>⏎</kbd> send</span><span><kbd>esc</kbd> close</span>`
+      : `<span>${q.length>1?`<span class="pager"><button data-pg="-1">‹</button>${i+1} of ${q.length}<button data-pg="1">›</button></span>`:''}</span><span class="others">${rest.map(x=>`<span><span class="adot working" style="--c:${x.c}"></span>${x.ws}</span>`).join('')}${rest.length?' working':''}</span>`;
+    r.querySelectorAll('[data-pg]').forEach(b=>b.onclick=e=>{ e.stopPropagation(); const q2=queue(); const j=q2.indexOf(focus()); const nx=q2[(j+ +b.dataset.pg+q2.length)%q2.length]; sel=nx&&nx.id; render() });
+  }
+};
+
+/* ------------ B — Roster: the panel has a list of every agent ------------ */
+const VariantB={ key:'B', name:'Roster', allowPeek:true,
+  desc:'Quiet notch: Mochi and a single number, which turns amber when someone needs you. When the panel opens, the left side lists every agent with its state, and the one that needs you is selected. You can also click a working agent to peek at it, but it never opens by itself for that.',
+  mount(root){ root.innerHTML=baseMarkup('<div class="roster fade" id="ros"></div>'); this.P=baseMount(root,'F'); this.P.main=new Mochi(34); this.ear=new Mochi(26); $('#el',root).appendChild(this.ear.c); this.root=root },
+  render(){ const r=this.root, P=this.P; const {open,a,quiet,showInput}=paintPanel(r,P,34,false);
+    $('#ros',r).classList.toggle('hidden',!open);
+    const h=Math.max(open?(showInput?112:panelHeight(a,26)):32, open?56+agents.length*36:0);
+    P.n.classList.toggle('closing',!open); P.n.style.width=(open?700:quiet?300:184)+'px'; P.n.style.height=(open?h:32)+'px'; P.n.style.borderRadius=open?'0 0 26px 26px':'0 0 12px 12px';
+    this.ear.set(urgent());
+    const nq=queue().filter(x=>x.phase!=='done').length;
+    $('#er',r).innerHTML=`<span class="cnt ${nq?'hot':''}">${nq||agents.length}</span><span class="${nq?'amb':''}">${nq?'need you':'working'}</span>`;
+    const ros=agents.filter(x=>!x.seen).map(x=>`<div class="rrow ${a&&a.id===x.id&&!showInput?'on':''}" data-sel="${x.id}"><span class="adot ${x.phase}" style="--c:${x.c}"></span><b>${x.ws}</b><span class="st ${x.phase}">${WORD[x.phase]}</span></div>`).join('');
+    if($('#ros',r).dataset.h!==ros){ $('#ros',r).innerHTML=ros; $('#ros',r).dataset.h=ros }
+    $('#foot',r).innerHTML=showInput?`<span><kbd>⏎</kbd> send</span><span><kbd>esc</kbd> close</span>`:`<span>${a&&a.phase==='approval'?'<kbd>⏎</kbd> allow':a&&a.phase==='blocked'?'<kbd>⏎</kbd> try again':''}</span><span><kbd>/</kbd> new task &nbsp; <kbd>esc</kbd> hide</span>`;
+    wire(r);
+  }
+};
+
+/* ------------ C — Crew: one small Mochi per agent ------------ */
+const VariantC={ key:'C', name:'Mochi crew', allowPeek:true,
+  desc:'Each agent gets its own little Mochi in its workspace colour. In the quiet notch they sit side by side and act out their state: working, waiting, done. The panel’s avatar becomes the Mochi of the agent that needs you, and the whole crew sits in the panel footer so you can jump between them.',
+  mount(root){ root.innerHTML=baseMarkup(); this.P=baseMount(root); this.P.main=new Mochi(34); this.root=root },
+  render(){ const r=this.root, P=this.P; const {open,a,quiet,showInput}=paintPanel(r,P,34,true);
+    P.n.classList.toggle('closing',!open); P.n.style.width=(open?600:quiet?380:184)+'px'; P.n.style.height=(open?(showInput?112:panelHeight(a)):32)+'px'; P.n.style.borderRadius=open?'0 0 26px 26px':'0 0 12px 12px';
+    const live=agents.filter(x=>!x.seen);
+    const el=$('#el',r), key=live.map(x=>x.id).join();
+    if(el.dataset.k!==key){ el.dataset.k=key; el.innerHTML=''; for(const x of live) el.appendChild(mochiFor(x,26).c) } else live.forEach(x=>mochiFor(x,26));
+    const w=live.find(x=>x.phase==='approval'||x.phase==='blocked');
+    $('#er',r).innerHTML=w?`<span class="amb">${w.ws} ${WORD[w.phase]}</span>`:`${live.filter(x=>x.phase==='working').length} working`;
+    // the crew in the footer (separate small canvases)
+    const foot=$('#foot',r);
+    if(showInput){ foot.innerHTML=`<span><kbd>⏎</kbd> send</span><span><kbd>esc</kbd> close</span>`; foot.dataset.k='' }
+    else { const k2=live.map(x=>x.id+x.phase).join()+(a&&a.id); if(foot.dataset.k!==k2){ foot.dataset.k=k2; foot.innerHTML=`<span class="crew" id="crew"></span><span><kbd>/</kbd> new task &nbsp; <kbd>esc</kbd> hide</span>`;
+      const crew=$('#crew',r); for(const x of live){ const s=document.createElement('span'); s.dataset.sel=x.id; s.title=`${x.ws} · ${WORD[x.phase]}`; s.className=(a&&a.id===x.id?'sel ':'')+({approval:'w',blocked:'b',done:'d'}[x.phase]||''); s.appendChild(mochiFor(x,22).c); crew.appendChild(s) } } }
+    wire(r);
+  }
+};
+
+/* ------------ D — Crew on the side, animated: each Mochi is one element that travels ------------ */
+const VariantD={ key:'D', name:'Crew on the side', allowPeek:true,
+  desc:'The Mochi crew, split around the camera when quiet and standing in a column when the panel opens. Each Mochi is one element that travels between the two places, so opening and closing the panel makes the crew fly in and out with a little stagger. New agents pop out of the camera. One that needs you jumps. A finished one spins back into the camera with a burst of sparks. Switching between them slides a highlight down the column.',
+  OPEN_W:620,
+  mount(root){ root.innerHTML=baseMarkup()+`<div class="crewL" id="crewL"><div class="hl" id="hl"></div></div>`; this.P=baseMount(root,'G2'); this.P.main=new Mochi(34); this.root=root; this.el={}; this.prev={}; this.mode=null; this.lastFocus=null },
+  badge(x){ return ({approval:'w',blocked:'b',done:'d'}[x.phase]||'') },
+  slots(live,open){ // mochi centres, relative to the screen's centre line
+    const out={};
+    if(open){ live.forEach((x,i)=>out[x.id]={x:-this.OPEN_W/2+10+28,y:58+i*52,s:.94}) }
+    else { live.forEach((x,i)=>{ const k=i>>1, left=i%2===0; out[x.id]={x:(left?-1:1)*(92+20+k*28),y:16,s:.8} }) }
+    return out;
+  },
+  place(el,p,extra=''){ el.style.transform=`translate(${p.x-16}px,${p.y-16}px) scale(${p.s})${extra}` },
+  burst(x,y,c){ const L=$('#crewL',this.root); for(let i=0;i<10;i++){ const a=i/10*Math.PI*2+Math.random()*.3, d=26+Math.random()*16, sp=document.createElement('i'); sp.className='spark';
+      sp.style.setProperty('--c',c); sp.style.setProperty('--x0',`${x-2}px`); sp.style.setProperty('--y0',`${y-2}px`); sp.style.setProperty('--x1',`${x-2+Math.cos(a)*d}px`); sp.style.setProperty('--y1',`${y-2+Math.sin(a)*d}px`);
+      L.appendChild(sp); setTimeout(()=>sp.remove(),800) } },
+  render(){ const r=this.root, P=this.P; const {open,a,quiet,showInput}=paintPanel(r,P,34,true);
+    const live=agents.filter(x=>!x.seen), L=$('#crewL',r);
+    const modeChanged=this.mode!==null&&this.mode!==open; this.mode=open;
+    const slots=this.slots(live,open);
+    // leaving: spin back into the camera with sparks
+    for(const id in this.el){ if(!live.find(x=>x.id===id)&&!this.el[id].dataset.leaving){ const el=this.el[id]; el.dataset.leaving=1; el.classList.add('leaving');
+      const ag=agents.find(x=>x.id===id); const c=ag?ag.c:'#fff'; const cur=new DOMMatrix(getComputedStyle(el).transform);
+      setTimeout(()=>this.place(el,{x:cur.m41+16,y:cur.m42+16,s:.5}),30); setTimeout(()=>{ el.remove(); delete this.el[id] },700) } }
+    live.forEach((x,i)=>{ let el=this.el[x.id], fresh=false;
+      if(!el){ fresh=true; el=document.createElement('div'); el.className='cm instant'; el.dataset.sel=x.id; el.innerHTML='<div class="bob"></div><span class="lbl"></span>';
+        el.querySelector('.bob').appendChild(mochiFor(x,32).c); el.querySelector('.lbl').textContent=x.ws; L.appendChild(el); this.el[x.id]=el;
+        const t0=slots[x.id]; el.style.opacity=0; this.place(el,{...t0,s:t0.s*.7}); el.offsetWidth; el.classList.remove('instant'); el.style.opacity='' }
+      mochiFor(x,32);
+      el.title=`${x.ws} · ${WORD[x.phase]}`;
+      el.classList.remove('w','b','d'); const bd=this.badge(x); if(bd) el.classList.add(bd);
+      el.classList.toggle('col',open); el.classList.toggle('on',open&&!showInput&&a&&a.id===x.id);
+      // stagger only when the whole crew moves between the notch and the column
+      el.style.transitionDelay='0ms';
+      this.place(el,slots[x.id]);
+      // a Mochi that starts needing you jumps
+      const was=this.prev[x.id]; if(was&&was!==x.phase&&(x.phase==='approval'||x.phase==='blocked'||x.phase==='done')){ el.classList.remove('jump'); el.offsetWidth; el.classList.add('jump') }
+      this.prev[x.id]=x.phase });
+    // highlight pill slides to the selected Mochi
+    const hl=$('#hl',r), on=open&&!showInput&&a&&slots[a.id];
+    hl.style.opacity=on?1:0; if(on){ const p=slots[a.id]; hl.style.transform=`translate(${p.x-28}px,${p.y-22}px)` }
+    // the panel content swaps with a short slide-in when the focus changes
+    const fid=a&&!showInput?a.id+a.phase:null; if(open&&fid&&fid!==this.lastFocus&&!ho){ for(const id of['task','body']){ const e=$('#'+id,r); e.classList.remove('swap'); e.offsetWidth; e.classList.add('swap') } } this.lastFocus=open?fid:null;
+    const side=Math.ceil(live.length/2);
+    const h=Math.max(open?(showInput?112:panelHeight(a)):32, open?44+live.length*52:0);
+    P.n.classList.toggle('closing',!open); P.n.style.width=(open?this.OPEN_W:quiet?184+2*(side*28+22):184)+'px'; P.n.style.height=(open?h:32)+'px'; P.n.style.borderRadius=open?'0 0 26px 26px':'0 0 12px 12px';
+    $('#foot',r).innerHTML=showInput?`<span><kbd>⏎</kbd> send</span><span><kbd>esc</kbd> close</span>`:`<span>${a&&a.phase==='approval'?'<kbd>⏎</kbd> allow':a&&a.phase==='blocked'?'<kbd>⏎</kbd> try again':''}</span><span><kbd>/</kbd> new task &nbsp; <kbd>esc</kbd> hide</span>`;
+    wire(r);
+  }
+};
+
+/* ------------ E — One main agent: whoever needs you, else whoever matches what you're working on ------------ */
+const MOTIONS=[
+  ['handoff','Particle hand-off','How the voice-harness prototype did it. The big Mochi never moves. A dot in the new agent’s colour flies from its little Mochi into the big one and bursts. The big Mochi takes that colour and hops in place, the panel gets a tint of it, and the text blurs over.'],
+  ['still','Stay put','The Mochis never leave the notch strip. Opening the panel doesn’t move them at all. When the main spot changes hands, the two Mochis fade out and back in on their new spots.'],
+  ['main','Main only','Only the main Mochi travels, down into the panel’s top row, with a short plain glide. The subagents stay in the notch strip and just fade when they swap.'],
+  ['fade','Crossfade','Nothing slides. When the panel opens, the Mochis fade out in the notch and fade in at their panel spots, which are a column of named pills on the right.'],
+  ['glide','Glide','Mochis slide to their new spots with a short ease-out, no bounce and no stagger. Pills appear at full size, without growing.'],
+  ['spring','Spring (island)','The previous version: the island’s spring, a 35 ms stagger, and the Mochis growing into pills.']
+];
+const VariantE={ key:'E', name:'Main + subagents', allowPeek:true, OPEN_W:660, motion:(()=>{ try{ return new URL(location).searchParams.get('motion')||'handoff' }catch(e){ return 'handoff' } })(),
+  setMotion(mo){ this.motion=mo; try{ const u=new URL(location); u.searchParams.set('motion',mo); history.replaceState(null,'',u) }catch(e){} this.paintPicker(); render() },
+  paintPicker(){ const bar=$('#mbar'); bar.innerHTML='Motion: '+MOTIONS.map(([k,n],i)=>`<button data-mo="${k}" class="${k===this.motion?'on':''}">${i+1} · ${n}</button>`).join('');
+    bar.querySelectorAll('button').forEach(b=>b.onclick=()=>this.setMotion(b.dataset.mo)); $('#mDesc').textContent=MOTIONS.find(m=>m[0]===this.motion)[2] },
+  desc:'All agents are equal, but one holds the main spot, left of the camera and bigger. It goes to the agent that needs you. When nobody needs you, it goes to the agent for the window you’re working in, so click the windows to switch. The others wait on the right. When the panel opens they grow into named pills, like the island’s agent pills. The motion follows the shipping island: a soft spring to open, a quick ease to close.',
+  mount(root){ root.innerHTML=baseMarkup()+`<div class="crewL" id="crewL"></div>`; this.P=baseMount(root,'G3'); this.P.n.classList.add('E'); this.paintPicker();
+    const w=document.createElement('div'); w.className='wash'; this.P.n.insertBefore(w,this.P.n.firstChild); this.washEl=w;
+    this.big=new Mochi(64,'#E6E8EE'); const me=document.createElement('div'); me.className='cm2 ismain'; me.style.opacity=0; me.appendChild(this.big.c); me.insertAdjacentHTML('beforeend','<i class="bd"></i>');
+    $('#crewL',root).appendChild(me); this.mainEl=me; this.bigId=null; this.subOrder=[]; this.slotEls=[]; this.P.main=new Mochi(34); this.root=root; this.el={}; this.mode=null; this.lastFocus=null;
+    const inp=this.P.inp; inp.onkeydown=e=>{ if(e.key==='Enter'&&inp.value.trim()){ const v=inp.value; inp.value=''; summoned=false; const m=this.main(); const r0=ROUTES.find(r=>r.ws===(m?m.ws:ctx))||ROUTES[0];
+        addAgent({ws:r0.ws,agent:r0.agent,c:r0.c,task:v,steps:['Reading the project','Making the change','Checking the result'],plan:[['work',4500],['done',{reply:'Done. I made the change and checked it.',files:[['index.ts',9,3]]}]]}) } if(e.key==='Escape') dismiss() } },
+  // Subagents sit in fixed slots. When a small Mochi becomes main, its slot stays put and,
+  // once the dot has landed, recolours into the previous main agent.
+  renderHandoff(live,m,open,slots,qSub){
+    this.subOrder=this.subOrder||[]; this.slotEls=this.slotEls||[];
+    const isLive=id=>live.some(x=>x.id===id), byId=id=>live.find(x=>x.id===id);
+    const prev=this.bigId, mid=m?m.id:null; this._from=null; this._onLand=null; let swapIdx=-1;
+    if(mid!==prev){ const i=mid?this.subOrder.indexOf(mid):-1;
+      if(i>=0){ this._from=qSub(i); if(prev&&isLive(prev)){ this.subOrder[i]=prev; swapIdx=i } else this.subOrder.splice(i,1) }
+      else if(prev&&isLive(prev)) this.subOrder.push(prev) }
+    this.subOrder=this.subOrder.filter(id=>isLive(id)&&id!==mid);
+    for(const x of live) if(x.id!==mid&&!this.subOrder.includes(x.id)) this.subOrder.push(x.id);
+    if(swapIdx>=0){ const sl=this.slotEls[swapIdx]; if(sl){ sl.pending=true; this._onLand=()=>{ sl.pending=false; render() } } }
+    this.paintBig(m,slots,open);
+    const L=$('#crewL',this.root);
+    this.subOrder.forEach((id,i)=>{ const x=byId(id); let sl=this.slotEls[i];
+      if(!sl){ const mo=new Mochi(32,x.c), el=document.createElement('div'); el.className='cm2 born'; el.appendChild(mo.c); el.insertAdjacentHTML('beforeend','<i class="bd"></i>');
+        L.appendChild(el); sl=this.slotEls[i]={el,mo,agentId:id,pending:false}; el.style.transition='none'; this.place(el,qSub(i)); el.offsetWidth; el.style.transition=''; requestAnimationFrame(()=>el.classList.remove('born')) }
+      if(sl.gone){ sl.gone=false; sl.el.classList.remove('gone') }
+      this.place(sl.el,qSub(i));
+      if(sl.pending) return;                       // keep showing the old agent until the dot lands
+      if(sl.agentId!==id){ sl.agentId=id; sl.mo.setColor(x.c) }
+      sl.mo.set(x.phase==='done'?'done':x.phase); sl.el.dataset.sel=id; sl.el.title=`${x.ws} · ${WORD[x.phase]}`;
+      sl.el.classList.remove('w','b','d'); const bd=({approval:'w',blocked:'b',done:'d'}[x.phase]); if(bd) sl.el.classList.add(bd) });
+    // slots no longer needed shrink away
+    for(let i=this.subOrder.length;i<this.slotEls.length;i++){ const sl=this.slotEls[i]; if(sl&&!sl.gone){ sl.gone=true; sl.el.classList.add('gone'); const el=sl.el; setTimeout(()=>{ if(sl.gone){ el.remove(); if(this.slotEls[i]===sl) this.slotEls.length=Math.min(this.slotEls.length,i) } },380) } }
+  },
+  paintBig(m,slots,open){
+    const me=this.mainEl, big=this.big, sl=m?slots[m.id]:{cx:-(92+30),cy:16,d:29};
+    me.style.zIndex=3; this.place(me,sl); me.style.opacity=m?1:0;
+    big.set(m?(m.phase==='done'?'done':m.phase):'idle');
+    me.classList.remove('w','b','d'); const bd=m&&({approval:'w',blocked:'b',done:'d'}[m.phase]); if(bd) me.classList.add(bd);
+    const id=m?m.id:null; if(id===this.bigId) return;
+    const prev=this.bigId; this.bigId=id; if(!m) return;
+    const from=this._from;
+    // colour, glow and text start changing the moment the dot leaves, spread over its ~0.6 s flight;
+    // the hop is the landing
+    const recolor=slow=>{ big.setColor(m.c,slow?.045:.12); this.washEl.style.setProperty('--wash',rgba(hex(m.c),.34));
+      if(open) for(const k of['task','body']){ const e=$('#'+k,this.root); e.classList.remove('bswap','vin'); e.offsetWidth; e.classList.add('bswap') } };
+    if(prev&&from){ this.handing=true; recolor(true); const after=this._onLand; this.flight({x:from.cx,y:from.cy},{x:sl.cx,y:sl.cy},m.c,()=>{ this.handing=false; big.hopNow(); if(after) after() }) }
+    else { recolor(false); big.hopNow() }
+  },
+  // 950 ms: 62 % travel (ease-out cubic, 9 → 4 px with a fading halo), then a 14-dot burst to r 26
+  flight(a,b,c,onLand){ const L=$('#crewL',this.root), d=document.createElement('i'); d.className='pdot'; L.appendChild(d);
+    const t0=NOW(), T=950, travel=.62; let landed=false;
+    const step=()=>{ const p=(NOW()-t0)/T;
+      if(p<travel){ const k=p/travel, e=1-Math.pow(1-k,3), x=a.x+(b.x-a.x)*e, y=a.y+(b.y-a.y)*e, dm=9-5*e;
+        Object.assign(d.style,{width:dm+'px',height:dm+'px',background:c,boxShadow:`0 0 0 2px ${rgba(hex(c),.25*(1-e))}`,transform:`translate(${x-dm/2}px,${y-dm/2}px)`}); requestAnimationFrame(step); return }
+      if(!landed){ landed=true; d.remove(); onLand();
+        for(let i=0;i<14;i++){ const ang=i/14*Math.PI*2, sp=document.createElement('i'); sp.className='spark'; sp.style.width=sp.style.height='3.2px';
+          sp.style.setProperty('--c',c); sp.style.setProperty('--x0',`${b.x-1.6}px`); sp.style.setProperty('--y0',`${b.y-1.6}px`); sp.style.setProperty('--x1',`${b.x-1.6+Math.cos(ang)*26}px`); sp.style.setProperty('--y1',`${b.y-1.6+Math.sin(ang)*26}px`);
+          sp.style.animation=`spark ${T*(1-travel)}ms linear forwards`; L.appendChild(sp); setTimeout(()=>sp.remove(),T) } } };
+    requestAnimationFrame(step) },
+  needQ(){ return agents.filter(needs).sort((x,y)=>((x.phase==='done')-(y.phase==='done'))||(x.attnAt-y.attnAt)) },
+  sig(){ return this.needQ().map(a=>a.id+a.phase).join() },
+  isOpen(){ return summoned || !!sel || (this.needQ().length>0 && this.sig()!==dismissedSig) },
+  main(){ const live=agents.filter(x=>!x.seen);
+    if(sel){ const s1=live.find(x=>x.id===sel); if(s1) return s1 }
+    const q=this.needQ(); if(q.length) return q[0];
+    return live.filter(x=>x.ws===ctx).pop() || null },
+  // a slot is either a circle {cx,cy,d} or a pill {L,T,W,H}; coordinates relative to the screen centre
+  place(el,sl){ const cv=el.querySelector('canvas'), bd=el.querySelector('.bd'); let L,T,W,H,cs,cl,ct;
+    if(sl.pill){ ({L,T,W,H}=sl); cs=30; cl=17-cs/2; ct=H/2-cs/2 }
+    else { W=H=sl.d; L=sl.cx-W/2; T=sl.cy-H/2; cs=sl.d*1.3; cl=(W-cs)/2; ct=(H-cs)/2 }
+    Object.assign(el.style,{left:L+'px',top:T+'px',width:W+'px',height:H+'px'}); Object.assign(cv.style,{left:cl+'px',top:ct+'px',width:cs+'px',height:cs+'px'});
+    Object.assign(bd.style,{left:(W-6)+'px',top:'-1px'}); el.classList.toggle('pill',!!sl.pill) },
+  render(){ const r=this.root, P=this.P, L=$('#crewL',r);
+    const live=agents.filter(x=>!x.seen), m=this.main(), subs=live.filter(x=>x!==m);
+    const open=this.isOpen(), showInput=summoned&&!sel, quiet=!open&&live.length>0;
+    const shrinking=this.mode===true&&!open; this.mode=open;
+    // closing uses the island's quick ease, only for the collapse itself
+    if(shrinking){ L.classList.add('closing'); clearTimeout(this.closeT); this.closeT=setTimeout(()=>L.classList.remove('closing'),380) }
+    if(open) L.classList.remove('closing');
+    const W2=this.OPEN_W/2, slots={};
+    const mo=this.motion, column=open&&(mo==='spring'||mo==='glide'||mo==='fade');
+    L.classList.remove(...MOTIONS.map(x=>'mo-'+x[0])); L.classList.add('mo-'+mo); P.n.classList.toggle('G3',column);
+    const qMain={cx:-(92+30),cy:16,d:29}, qSub=i=>({cx:92+22+i*26,cy:16,d:19});
+    if(m) slots[m.id]=open&&mo!=='still'?{cx:-W2+40,cy:64,d:48}:qMain;
+    subs.forEach((x,i)=>slots[x.id]=column?{pill:1,L:W2-14-148,T:102+i*42,W:148,H:34}:qSub(i));
+    // leaving: scale back down to nothing, quick ease
+    for(const id in this.el){ if(!live.find(x=>x.id===id)&&!this.el[id].dataset.leaving){ const el=this.el[id]; el.dataset.leaving=1; el.classList.add('gone'); setTimeout(()=>{ el.remove(); delete this.el[id] },380) } }
+    const ho=this.motion==='handoff'; this.mainEl.style.display=ho?'':'none'; (this.slotEls||[]).forEach(sl=>sl&&(sl.el.style.display=ho?'':'none'));
+    if(ho) this.renderHandoff(live,m,open,slots,qSub);
+    live.forEach(x=>{ let el=this.el[x.id];
+      if(!el){ el=document.createElement('div'); el.className='cm2 born'; el.dataset.sel=x.id;
+        const c=hex(x.c); el.style.setProperty('--bg',rgba(c,.13)); el.style.setProperty('--bd',rgba(c,.32));
+        el.innerHTML=`<span class="lbl2" style="color:${rgba(c.map(v=>v+(255-v)*.25),1)}"><b style="font-weight:600">${x.ws}</b><small></small></span><i class="bd"></i>`;
+        el.insertBefore(mochiFor(x,32).c,el.firstChild); L.appendChild(el); this.el[x.id]=el;
+        el.style.transition='none'; this.place(el,slots[x.id]); el.offsetWidth; el.style.transition=''; requestAnimationFrame(()=>el.classList.remove('born')) }
+      mochiFor(x,32); el.title=`${x.ws} · ${WORD[x.phase]}`;
+      el.style.display=ho?'none':''; if(ho) return;
+      el.classList.remove('w','b','d'); const bd=({approval:'w',blocked:'b',done:'d'}[x.phase]); if(bd) el.classList.add(bd);
+      const sm=el.querySelector('small'); sm.className=x.phase; sm.textContent=WORD[x.phase];
+      const i=x===m?0:subs.indexOf(x)+1; el.style.setProperty('--d',open?(i*.035)+'s':'0s');
+      el.style.zIndex=x===m?2:1; el.classList.toggle('ismain',x===m);
+      if(mo!=='spring') el.style.setProperty('--d','0s');
+      if(ho&&x===m){ el.style.opacity=0; el.style.pointerEvents='none'; return }
+      if(ho){ el.style.pointerEvents=''; if(el.style.opacity==='0'&&!el._t){ el._t=setTimeout(()=>{ el.style.opacity=''; el._t=null },this.handing?620:0) } }
+      const key=JSON.stringify(slots[x.id]), fadeSwap=mo==='still'||mo==='fade'||(mo==='main'&&x!==m)||(ho&&x!==m);
+      if(el.dataset.slot&&el.dataset.slot!==key&&fadeSwap){ const sl=slots[x.id]; el.style.opacity=0; clearTimeout(el._t); el._t=setTimeout(()=>{ this.place(el,sl); el.style.opacity=''; el._t=null },ho&&this.handing?620:170) }
+      else if(el.dataset.slot!==key) this.place(el,slots[x.id]);
+      el.dataset.slot=key });
+    // panel
+    $('#hint',r).classList.toggle('hidden',open||live.length>0);
+    for(const id of['bar','foot']) $('#'+id,r).classList.toggle('hidden',!open);
+    for(const id of['sep','body']) $('#'+id,r).classList.toggle('hidden',!open||showInput||!m);
+    for(const id of['el','er']) $('#'+id,r).classList.add('hidden');
+    const talkTo=m?m.ws:ctx; P.inp.placeholder=`Tell ${talkTo} what to do…`;
+    P.inp.style.display=showInput||!m?'':'none'; $('#task',r).style.display=showInput||!m?'none':''; $('#task',r).textContent=m?m.task:'';
+    $('#rt',r).innerHTML=m&&!showInput?`<span class="route" style="--c:${m.c}"><i></i><b>${m.agent}</b></span>`:'';
+    const av=$('#av',r); if(av.firstChild) av.innerHTML='';
+    const b=$('#body',r), html=showInput||!m?'':bodyFor(m); if(b.dataset.h!==html){ b.innerHTML=html; b.dataset.h=html }
+    // new content settles in after the shape has started to move, like the island's views
+    const fid=m&&!showInput?m.id+m.phase:null; if(open&&fid&&fid!==this.lastFocus&&!ho){ for(const id of['task','body']){ const e=$('#'+id,r); e.classList.remove('vin'); e.offsetWidth; e.classList.add('vin') } } this.lastFocus=open?fid:null;
+    const h=Math.max(open?(showInput?112:panelHeight(m)):32, column?112+subs.length*42:0);
+    P.n.classList.toggle('isopen',open); P.n.classList.toggle('closing',!open); P.n.style.width=(open?this.OPEN_W:quiet?184+2*(Math.max(56,subs.length*26+26)):184)+'px'; P.n.style.height=(open?h:32)+'px'; P.n.style.borderRadius=open?'0 0 26px 26px':'0 0 12px 12px';
+    $('#foot',r).innerHTML=showInput?`<span><kbd>⏎</kbd> send to ${talkTo}</span><span><kbd>esc</kbd> close</span>`:`<span>${m&&m.phase==='approval'?'<kbd>⏎</kbd> allow':m&&m.phase==='blocked'?'<kbd>⏎</kbd> try again':''}</span><span><kbd>/</kbd> talk to ${talkTo} &nbsp; <kbd>esc</kbd> hide</span>`;
+    wire(r);
+    if(open&&m&&m.phase==='done'&&!summoned&&!m.shownAt){ m.shownAt=1; const tick=()=>{ if(m.seen) return; if(hover||this.main()!==m||!this.isOpen()){ setTimeout(tick,2000); return } ack(m.id) }; setTimeout(tick,8000) }
+  },
+  async demo(){ reset(); setCtx('coucou'); for(const p of PLANS){ addAgent(p); await sleep(300) } await sleep(900); setCtx('portfolio') }
+};
+
+/* ------------ switcher + wiring ------------ */
+const VARIANTS={A:VariantA,B:VariantB,C:VariantC,D:VariantD,E:VariantE}, KEYS=Object.keys(VARIANTS);
+function show(k){ if(!VARIANTS[k]) k='A'; V=VARIANTS[k]; for(const kk in MCACHE) delete MCACHE[kk]; const root=$('#variantRoot'); root.innerHTML=''; V.mount(root);
+  $('#vTitle').textContent=`${k} — ${V.name}`; $('#vDesc').textContent=V.desc; $('#vLabel').textContent=`${k} — ${V.name}`; $('#mbar').style.display=$('#mDesc').style.display=k==='E'?'':'none';
+  try{ const u=new URL(location); u.searchParams.set('variant',k); history.replaceState(null,'',u) }catch(e){} render() }
+function cycle(d){ const i=KEYS.indexOf(V.key); show(KEYS[(i+d+KEYS.length)%KEYS.length]) }
+$('#prevV').onclick=()=>cycle(-1); $('#nextV').onclick=()=>cycle(1);
+$('#resetBtn').onclick=()=>reset();
+$('#demoBtn').onclick=async()=>{ if(V.demo) return V.demo(); reset(); for(const p of PLANS){ addAgent(p); await sleep(350) } };
+document.addEventListener('keydown',e=>{
+  if(e.target.closest&&e.target.closest('input,textarea,[contenteditable]')) return;
+  if(e.key==='ArrowLeft') cycle(-1); else if(e.key==='ArrowRight') cycle(1);
+  else if(e.key==='Escape') dismiss();
+  else if(V.setMotion&&/^[1-6]$/.test(e.key)) V.setMotion(MOTIONS[+e.key-1][0]);
+  else if(e.key==='/'){ e.preventDefault(); summoned=true; sel=null; render(); setTimeout(()=>$('#in')&&$('#in').focus(),250) }
+  else if(e.key==='Enter'){ const a=focus(); if(a&&isOpen()&&(a.phase==='approval'||a.phase==='blocked')) decide(a.id,true) }
+});
+function setCtx(ws){ ctx=ws; document.querySelectorAll('.ctxw').forEach(w=>{ w.classList.toggle('cur',w.dataset.ws===ws); if(w.dataset.ws===ws) w.style.zIndex=++seq }); render() }
+document.querySelectorAll('.ctxw').forEach(w=>w.addEventListener('click',()=>setCtx(w.dataset.ws)));
+function fit(){ const o=$('#stageOuter'), k=o.clientWidth/1120; $('#stage').style.transform=`scale(${k})`; o.style.height=(700*k)+'px' }
+addEventListener('resize',fit); fit();
+let startK='A'; try{ startK=new URL(location).searchParams.get('variant')||'E' }catch(e){}
+show(startK); setCtx('coucou');
+</script>
+</body>
+</html>

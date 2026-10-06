@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coucou — voice-first harness · gaps + prototype</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#0B0C0E;--card:#141518;--card2:#1C1E22;--line:rgba(255,255,255,.08);--ink:#F5F6F8;--mut:#8E939C;--dim:#6B7079;
+--coucou:#EC4899;--main:#F5F6F8;--ok:#34D399;--warn:#F5A524;--blue:#3B9EFF;--vio:#8B5CF6;
+--spr:cubic-bezier(.32,1.22,.42,1);--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif}
+body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#1a2030,#0B0C0E 60%) fixed,#0B0C0E;color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;padding:36px 20px 90px;display:flex;flex-direction:column;align-items:center}
+h1{font-size:26px;margin:0;letter-spacing:-.02em;text-align:center}
+.sub{color:var(--mut);font-size:13.5px;margin:10px 0 24px;max-width:820px;text-align:center;line-height:1.6}
+.sub b{color:var(--ink)}
+.wrap{width:1080px;max-width:96vw}
+/* harness island */
+.island{background:#000;border-radius:24px;padding:12px;box-shadow:0 30px 80px -20px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:2px 8px 10px}
+.tabs{display:flex;gap:8px;align-items:center}
+.tab{height:30px;border-radius:999px;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.06);color:#C9CCD2;border:0;font-size:13px;padding:0 12px}
+.tab.on{background:#232529;color:#fff}
+.ctx{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--dim)}
+.ctxbar{width:110px;height:6px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+.ctxbar i{display:block;height:100%;width:18%;background:linear-gradient(90deg,var(--blue),var(--vio));border-radius:99px;transition:width 1s ease}
+.stage{display:grid;grid-template-columns:300px 1fr;gap:10px}
+@media(max-width:860px){.stage{grid-template-columns:1fr}}
+/* avatar column — the centerpiece */
+.mochi-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;position:relative;overflow:hidden;min-height:460px}
+.mochi-card::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 135%,var(--wash,rgba(236,72,153,.2)) 0%,transparent 70%);transition:background .5s}
+.mochi{width:170px;height:140px;position:relative;z-index:1;margin-top:8px}
+.mochi canvas{width:100%;height:100%}
+.mochi.listening{animation:breathe 1.6s ease-in-out infinite}
+.mochi.speaking canvas{animation:talk .5s ease-in-out infinite}
+.mochi.working canvas{animation:work 1.2s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06,.94)}}
+@keyframes talk{0%,100%{transform:scale(1,1)}30%{transform:scale(1.04,.92)}60%{transform:scale(.97,1.06)}}
+@keyframes work{0%,100%{transform:rotate(-3deg) translateY(0)}50%{transform:rotate(3deg) translateY(-6px)}}
+.ring{position:absolute;inset:6px;border-radius:50%;border:2px solid transparent;opacity:0;pointer-events:none}
+.listening .ring{opacity:1;border-color:var(--blue);animation:ping 1.6s ease-out infinite}
+@keyframes ping{from{transform:scale(.85);opacity:.9}to{transform:scale(1.25);opacity:0}}
+.state{font-size:12px;font-weight:700;margin-top:6px;z-index:1;color:#fff}
+.state small{display:block;font-weight:400;color:var(--mut);font-size:11px}
+.wave{display:flex;gap:3px;align-items:end;height:26px;margin:10px 0 4px;z-index:1}
+.wave i{width:4px;border-radius:4px;background:var(--coucou);height:5px;transition:height .2s}
+.live .wave i{animation:wv .7s ease-in-out infinite}
+.wave i:nth-child(2n){animation-delay:.1s}.wave i:nth-child(3n){animation-delay:.2s}.wave i:nth-child(4n){animation-delay:.3s}
+@keyframes wv{0%,100%{height:5px}50%{height:22px}}
+.caption{font-size:13px;line-height:1.5;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:12px;padding:9px 12px;min-height:56px;width:100%;z-index:1}
+.caption b{color:#fff}
+.ptt{margin-top:10px;width:64px;height:64px;border-radius:50%;border:0;cursor:pointer;font-size:24px;background:#F5F6F8;color:#0B0C0E;box-shadow:0 0 0 0 rgba(245,246,248,.4);transition:all .25s var(--spr);z-index:1}
+.ptt:hover{transform:scale(1.06)}
+.ptt.live{animation:pp 1.4s infinite;background:#FF5A4E;color:#fff}
+@keyframes pp{0%{box-shadow:0 0 0 0 rgba(255,90,78,.5)}70%{box-shadow:0 0 0 18px rgba(255,90,78,0)}100%{box-shadow:0 0 0 0 rgba(255,90,78,0)}}
+.vhint{font-size:10.5px;color:var(--dim);margin-top:6px;z-index:1}
+.modelrow{display:flex;gap:6px;margin-top:10px;z-index:1;flex-wrap:wrap;justify-content:center}
+.modelrow button{border:1px solid var(--line);background:rgba(255,255,255,.05);color:#C9CCD2;border-radius:999px;font-size:11px;padding:4px 10px;cursor:pointer;font-family:inherit}
+.modelrow button.on{border-color:var(--coucou);color:#fff;background:rgba(236,72,153,.14)}
+/* work column */
+.work{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:460px;position:relative;overflow:hidden}
+.sessctl{display:flex;align-items:center;gap:8px}
+.sicon{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.06);color:#C9CCD2;font-size:13px;cursor:pointer;display:grid;place-items:center;font-family:inherit}
+.sesscur{flex:1;font-size:12px;color:var(--dim);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:4px 11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sesscur b{color:#fff}
+.trail{display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:300px;padding-right:2px}
+.tcard{background:var(--card2);border:1px solid var(--line);border-radius:13px;padding:9px 11px;font-size:12.5px;animation:pop .4s var(--spr)}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}}
+.tcard .k{font-size:10.5px;font-weight:700;letter-spacing:.05em;color:var(--mut);display:flex;align-items:center;gap:6px}
+.tcard pre{margin:6px 0 0;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:rgba(0,0,0,.4);border-radius:8px;padding:8px;overflow-x:auto;color:#D8DBE0;white-space:pre-wrap}
+.tcard.read .k{color:var(--blue)} .tcard.bash .k{color:var(--warn)} .tcard.edit .k{color:var(--ok)}
+.tcard .st{margin-left:auto;font-size:10px;padding:1px 8px;border-radius:99px;background:rgba(255,255,255,.08)}
+.diff .add{color:#7EE2A8} .diff .del{color:#FF8A8A}
+.appr{border:1px solid rgba(245,165,36,.5);background:rgba(245,165,36,.08);border-radius:14px;padding:11px 12px;animation:pop .4s var(--spr);box-shadow:0 0 24px -8px var(--warn)}
+.appr b{color:#fff} .appr .row{display:flex;gap:8px;margin-top:9px}
+.abtn{flex:1;border-radius:999px;padding:8px;font-size:13px;font-weight:700;cursor:pointer;border:0;font-family:inherit}
+.abtn.y{background:#34D399;color:#06281C} .abtn.n{background:transparent;border:1px solid rgba(255,255,255,.25);color:#fff}
+.abtn:hover{transform:scale(1.02)}
+.plan{border:1px dashed rgba(139,92,246,.5);background:rgba(139,92,246,.07);border-radius:13px;padding:9px 11px;font-size:12.5px}
+.plan b{color:#D6C6FF}
+.foot{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);margin-top:auto;padding-top:6px;border-top:1px solid var(--line)}
+.foot .cost{margin-left:auto}
+.kbtn{border:1px solid var(--line);background:rgba(255,255,255,.05);color:#C9CCD2;border-radius:999px;font-size:11px;padding:5px 11px;cursor:pointer;font-family:inherit;font-weight:600}
+.kbtn.danger{border-color:rgba(255,90,78,.5);color:#FF8A8A}
+.kbtn:hover{background:rgba(255,255,255,.1)}
+.controls{display:flex;gap:8px;margin:18px 0 26px;flex-wrap:wrap;justify-content:center}
+.btn{border:1px solid var(--line);background:#1C1E22;color:#E8E9EC;border-radius:999px;padding:10px 18px;font-size:13px;cursor:pointer;font-weight:600}
+.btn:hover{background:#26282E}.btn.primary{background:#F5F6F8;color:#0B0C0E;border-color:#F5F6F8}
+/* gap board */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:6px}
+@media(max-width:900px){.board{grid-template-columns:1fr}}
+.gap{background:#101114;border:1px solid var(--line);border-radius:16px;padding:15px 15px 13px}
+.gap h3{margin:0 0 4px;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.pillstat{font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px;letter-spacing:.03em}
+.have{background:rgba(52,211,153,.15);color:#7EE2A8;border:1px solid rgba(52,211,153,.4)}
+.part{background:rgba(245,165,36,.13);color:#FFC86B;border:1px solid rgba(245,165,36,.4)}
+.miss{background:rgba(255,90,78,.12);color:#FF9A9A;border:1px solid rgba(255,90,78,.4)}
+.gap p{font-size:12px;color:var(--mut);line-height:1.55;margin:6px 0}
+.gap p b{color:#E8E9EC}
+.gap .fix{font-size:12px;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.3);border-radius:10px;padding:8px 10px;color:#D6C6FF;line-height:1.5}
+.gap .fix b{color:#fff}
+.sec-t{font-size:15px;font-weight:700;margin:30px 0 4px;display:flex;align-items:center;gap:8px}
+.sec-s{font-size:12.5px;color:var(--dim);margin:0 0 12px;line-height:1.5;max-width:760px}
+code{font-family:ui-monospace,Menlo,monospace;background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px;font-size:11px}
+</style>
+</head>
+<body>
+<h1>🎙️ Coucou harness — voice-first, avatars alive</h1>
+<p class="sub">You don't chat <b>at</b> the agents — you <b>talk with them</b>. OpenCode stays the backend (<code>opencode run --cwd</code> headless per workspace).<br>This layer adds the <b>harness</b>: permissions, tools, approvals, plan, checkpoints, interrupt, cost — all wrapped around the <b>animated avatar as centerpiece</b>, never a chat log.</p>
+<div class="wrap">
+<div class="island">
+<div class="topbar">
+<div class="tabs"><span class="tab on">🌸 coucou-app</span><span class="tab">◷ fix login hang · 12</span><span class="tab">✦ Main lurking</span></div>
+<div class="ctx"><span id="ctxTxt">ctx 18%</span><span class="ctxbar"><i id="ctxFill"></i></span><span id="costTxt">¢0.0</span></div>
+</div>
+<div class="stage">
+<!-- AVATAR -->
+<div class="mochi-card" id="mcard">
+<div class="mochi listening" id="mochi"><span class="ring"></span><canvas id="cv" width="220" height="170"></canvas></div>
+<div class="state" id="state">Listening…<small>say "in coucou-app…" — jev routes to the folder owner</small></div>
+<div class="wave live" id="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<div class="caption" id="cap"><b>YOU (voice):</b> <span id="capTxt">“in coucou-app the login button hangs…”</span></div>
+<button class="ptt" id="ptt" title="push to talk">🎙</button>
+<div class="vhint">hold to talk · <b>“yes / no”</b> answers approvals · <b>“stop”</b> interrupts</div>
+<div class="modelrow"><button class="on">opencode · sonnet</button><button>glm-4.6</button><button>local</button></div>
+</div>
+<!-- WORK -->
+<div class="work">
+<div class="sessctl"><button class="sicon" title="history">◷</button><div class="sesscur"><b>fix login hang</b> · coucou-app · session 3/12</div><button class="sicon" title="new session">+</button><button class="kbtn danger" id="stopBtn">■ stop</button></div>
+<div class="trail" id="trail"></div>
+<div class="foot"><span>🔌 opencode backend · headless</span><span>🧩 2 MCP</span><span class="cost" id="footCost">$0.004 · 1.2k tok</span></div>
+</div>
+</div>
+</div>
+<div class="controls">
+<button class="btn primary" id="play">▶ Play voice task</button>
+<button class="btn" id="bAppr">Simulate approval</button>
+<button class="btn" id="bPlan">Plan mode</button>
+<button class="btn" id="bReset">Reset</button>
+</div>
+<h2 class="sec-t">🧩 Harness gaps → proposals <span style="font-weight:400;font-size:12px;color:var(--dim)">what Claude Code / DeepSeek Harness have that Coucou needs — avatar-first fixes</span></h2>
+<p class="sec-s">Rule for every fix: the avatar stays the centerpiece. State changes show on Mochi first (color, motion, voice line), cards are secondary evidence. No terminal-wall, no chat-log takeover.</p>
+<div class="board">
+<div class="gap"><h3>1 · Tool calls visible <span class="pillstat part">PARTIAL</span></h3>
+<p><b>Have:</b> headless <code>opencode run</code>, working shimmer. <b>Missing:</b> per-tool cards (read/bash/edit) like Claude Code's transcript.</p>
+<div class="fix"><b>Fix → tool trail:</b> each tool = one compact card sliding under the avatar (see live demo ←). Avatar <b>works</b> (tilt-bounce) while tools stream, speaks the 1-line summary only.</div></div>
+<div class="gap"><h3>2 · Permissions / allow-list <span class="pillstat miss">MISSING</span></h3>
+<p>Claude Code: allow <code>npm test</code> always, ask on <code>rm</code>, deny <code>curl | sh</code>. Coucou: everything or nothing.</p>
+<div class="fix"><b>Fix → voice rules:</b> “always allow tests in coucou-app”. Rules live per-workspace, shown as tiny chips. Avatar asks only on first-seen risky tool — rest auto.</div></div>
+<div class="gap"><h3>3 · Approvals (voice) <span class="pillstat part">PARTIAL</span></h3>
+<p><b>Have:</b> <code>ApprovalInfo</code> + question views. <b>Missing:</b> voice answering, timeout, edit-before-allow.</p>
+<div class="fix"><b>Fix → spoken approval:</b> avatar leans in, glows amber, <i>speaks</i> “allow edit LoginView?”. You say <b>“yes / no / show diff”</b>. Card has Allow/Deny as fallback. See “Simulate approval” ↑.</div></div>
+<div class="gap"><h3>4 · Question / input <span class="pillstat part">PARTIAL</span></h3>
+<p><b>Have:</b> question view. <b>Missing:</b> options as voice choices, not buttons-only.</p>
+<div class="fix"><b>Fix → avatar asks:</b> “timeout or retry?” Mochi shows 2 big options, numbers them: “say <b>one</b> or <b>two</b>”. Tap also works.</div></div>
+<div class="gap"><h3>5 · Plan mode <span class="pillstat miss">MISSING</span></h3>
+<p>Claude Code's <code>Shift+Tab</code> plan-then-execute. Coucou jumps straight to edits.</p>
+<div class="fix"><b>Fix → “plan it first”:</b> voice “plan, don't touch”. Avatar turns violet, reads the 3-step plan aloud, shows plan card (see “Plan mode” ↑). “Go” executes, each step ticking.</div></div>
+<div class="gap"><h3>6 · Interrupt / stop <span class="pillstat miss">MISSING</span></h3>
+<p>No way to cut a runaway <code>opencode run</code>. Voice harness needs instant stop.</p>
+<div class="fix"><b>Fix → ■ + “stop”:</b> stop button beside ◷/+ (live ↑) + voice “stop”. SIGTERM → avatar exhales, trail freezes with “stopped — kept 2/5 steps”. Resume or re-plan.</div></div>
+<div class="gap"><h3>7 · Diffs + review <span class="pillstat part">PARTIAL</span></h3>
+<p><b>Have:</b> <code>sessionDiffs</code>. <b>Missing:</b> inline review before apply.</p>
+<div class="fix"><b>Fix → diff card under avatar:</b> red/green 3-liner + “say <b>apply</b> or <b>tweak…</b>”. Full diff stays in workspace thread (clock ◷).</div></div>
+<div class="gap"><h3>8 · Checkpoints / rewind <span class="pillstat miss">MISSING</span></h3>
+<p>Claude Code rewinds a session. Coucou has no undo once opencode writes.</p>
+<div class="fix"><b>Fix → git checkpoint per session:</b> auto-stash before each edit batch. History popup (◷) gets “↩ rewind” per row. Avatar spins back, says “rewound to before the edit”.</div></div>
+<div class="gap"><h3>9 · Background sessions <span class="pillstat miss">MISSING</span></h3>
+<p>DeepSeek harness runs tasks in bg with notifications. Coucou: one foreground run.</p>
+<div class="fix"><b>Fix → lurking workers:</b> say “keep going in background”. Pill gets blue working ring + avatar shrinks to roster. “Done” → Mochi pops + speaks the 1-liner.</div></div>
+<div class="gap"><h3>10 · Cost / tokens / context <span class="pillstat miss">MISSING</span></h3>
+<p>No spend visibility. Voice users especially need “am I burning money?”.</p>
+<div class="fix"><b>Fix → top-right meter:</b> ctx bar + ¢ live (see island header ↑, fills during demo). Avatar yawns at 80% ctx → offers “compact”. Per-workspace totals in ◷ popup.</div></div>
+<div class="gap"><h3>11 · Model + MCP + commands <span class="pillstat part">PARTIAL</span></h3>
+<p><b>Have:</b> model pickers, integration pills. <b>Missing:</b> per-agent model, MCP toggles, <code>/skills</code> by voice.</p>
+<div class="fix"><b>Fix → “use glm for this”:</b> model chips under avatar are voice-settable per workspace. “Connect Figma” toggles MCP. “Review-pr” runs a skill, avatar narrates.</div></div>
+<div class="gap"><h3>12 · Wake + memory <span class="pillstat part">PARTIAL</span></h3>
+<p><b>Have:</b> sounds, menu, Mochi moods. <b>Missing:</b> wake-word, compact/resume, cross-session memory.</p>
+<div class="fix"><b>Fix → “hey coucou”:</b> idle avatar sleeps (slow float), wake-word → hop + listen. Each session compacts to 1 line for Main; workspace keeps full log. “Remember X” pins to workspace.</div></div>
+</div>
+<h2 class="sec-t">🗺️ Suggested build order</h2>
+<p class="sec-s"><b>1.</b> Tool trail + stop (trust) → <b>2.</b> Voice approvals + diffs (safety) → <b>3.</b> Plan mode + checkpoints (undo) → <b>4.</b> Cost/ctx meter (awareness) → <b>5.</b> Background + wake (liveliness). Each step keeps the avatar as the narrator — cards prove, Mochi tells.</p>
+</div>
+<script>
+const cv=document.getElementById('cv'),X=cv.getContext('2d');
+let mood='#EC4899',hat=true;
+function mochi(){X.clearRect(0,0,220,170);
+X.fillStyle=mood;X.beginPath();X.ellipse(110,100,66,50,0,0,7);X.fill();
+X.fillStyle='rgba(255,255,255,.35)';X.beginPath();X.ellipse(86,80,20,11,-.4,0,7);X.fill();
+X.fillStyle='#141414';X.beginPath();X.arc(88,104,7,0,7);X.arc(132,104,7,0,7);X.fill();
+// mouth changes with state
+const st=document.getElementById('mochi').className;
+X.strokeStyle='#141414';X.lineWidth=3;X.beginPath();
+if(st.includes('speaking')){X.arc(110,118,10,.2,Math.PI-.2);}
+else if(st.includes('working')){X.moveTo(100,120);X.lineTo(120,120);}
+else{X.arc(110,116,6,.3,Math.PI-.3);}
+X.stroke();
+if(hat){X.fillStyle='#5B21B6';X.beginPath();X.moveTo(44,58);X.lineTo(110,8);X.lineTo(176,58);X.closePath();X.fill();X.fillStyle='#F59E0B';X.fillRect(44,52,132,10);X.fillStyle='#FBBF24';X.fillRect(102,22,16,12);}
+document.getElementById('mcard').style.setProperty('--wash',mood+'33');}
+mochi();
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const trail=document.getElementById('trail');
+function tcard(cls,k,body){const d=document.createElement('div');d.className='tcard '+cls;d.innerHTML=`<div class="k">${k}<span class="st">●</span></div>${body}`;trail.appendChild(d);trail.scrollTop=trail.scrollHeight;return d;}
+function setM(cls,txt,sub){const m=document.getElementById('mochi');m.className='mochi '+cls;document.getElementById('state').innerHTML=txt+(sub?`<small>${sub}</small>`:'');document.getElementById('wave').className='wave'+(cls==='listening'||cls==='speaking'?' live':'');mochi();}
+let cost=0,tok=0;
+function meter(c,t,ctx){cost+=c;tok+=t;document.getElementById('costTxt').textContent='¢'+cost.toFixed(1);document.getElementById('footCost').textContent='$'+(cost/100).toFixed(3)+' · '+(tok/1000).toFixed(1)+'k tok';document.getElementById('ctxFill').style.width=ctx+'%';document.getElementById('ctxTxt').textContent='ctx '+ctx+'%';}
+async function play(){
+trail.innerHTML='';cost=0;tok=0;meter(0,0,18);
+setM('listening','Listening…','“in coucou-app the login hangs” · jev 0.97');
+document.getElementById('capTxt').textContent='“in coucou-app the login button hangs…”';
+await sleep(1500);
+setM('speaking','Routing…','Main → coucou-app · opencode run');
+tcard('read','🔍 READ · LoginView.swift','<pre>reading 84 lines… found signIn() without await</pre>');meter(.4,400,26);await sleep(1100);
+setM('working','Working…','running tests headless — say “stop” anytime');
+tcard('bash','⌨ BASH · npm test','<pre>$ npm test — 2 failing: login hangs after click</pre>');meter(.8,700,34);await sleep(1300);
+tcard('edit','✏ EDIT · LoginView.swift:42','<pre class="diff"><span class="del">- await signIn()</span>\n<span class="add">+ await signIn(timeout: 8)</span></pre>');meter(1.1,500,41);await sleep(1200);
+setM('speaking','Done ✅','fixed — missing await · tests pass');
+tcard('bash','✅ TESTS · pass','<pre>12/12 pass in 4.2s</pre>');meter(.6,300,44);
+document.getElementById('capTxt').textContent='“Fixed — missing await, LoginView line 42. Tests pass.”';
+await sleep(800);}
+document.getElementById('play').onclick=()=>play();
+document.getElementById('bAppr').onclick=()=>{
+const d=document.createElement('div');d.className='appr';d.innerHTML=`<b>🔐 coucou-app wants to edit</b><div style="font-size:12px;color:#C9CCD2;margin-top:4px"><code>LoginView.swift:42</code> · add timeout — say <b>“yes”</b> / <b>“no”</b> / <b>“show diff”</b></div><div class="row"><button class="abtn y">✓ yes</button><button class="abtn n">no</button></div>`;trail.appendChild(d);trail.scrollTop=trail.scrollHeight;
+setM('speaking','Approval needed','leaning in — say “yes” or “no”');
+d.querySelector('.y').onclick=()=>{d.innerHTML=`<b>✅ allowed</b><div style="font-size:12px;color:#7EE2A8">voice “yes” · edit applied · remembered for tests</div>`;setM('working','Working…','permission remembered');};
+d.querySelector('.n').onclick=()=>{d.innerHTML=`<b>⛔ denied</b><div style="font-size:12px;color:#FF9A9A">skipped — tell me another way</div>`;setM('listening','Listening…','okay — what instead?');};};
+document.getElementById('bPlan').onclick=()=>{
+const d=document.createElement('div');d.className='plan';d.innerHTML=`<b>📋 Plan — fix login hang</b><div style="margin-top:6px;color:#C9CCD2">1 · reproduce with test &nbsp; 2 · add await+timeout &nbsp; 3 · run suite<br><span style="color:#8E939C">read-only until you say</span> <b>“go”</b></div>`;trail.appendChild(d);trail.scrollTop=trail.scrollHeight;
+setM('speaking','Plan ready','violet = planning · say “go” to execute');mood='#8B5CF6';mochi();setTimeout(()=>{mood='#EC4899';mochi();},4000);};
+document.getElementById('bReset').onclick=()=>{trail.innerHTML='';meter(-cost,-tok,18);cost=0;tok=0;setM('listening','Listening…','say "in coucou-app…" — jev routes to the folder owner');};
+document.getElementById('stopBtn').onclick=()=>{tcard('bash','■ STOPPED','<pre>run killed — kept 2/5 steps · say “resume” or “re-plan”</pre>');setM('listening','Stopped','exhaled — what next?');};
+document.getElementById('ptt').onclick=e=>{const b=e.currentTarget;b.classList.toggle('live');const on=b.classList.contains('live');setM(on?'listening':'speaking',on?'Listening…':'Heard ✓','hold 🎙 or just speak — “hey coucou” wakes me');};
+play();
+</script>
+</body>
+</html>

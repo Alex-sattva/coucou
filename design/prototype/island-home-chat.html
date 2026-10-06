@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coucou — HOME (what needs you) + CHAT (the voice harness)</title>
+<style>
+*{box-sizing:border-box}
+:root{
+  --bg:#0B0C0E;--island:#000;--card:#141518;--card2:#1C1E22;
+  --line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.12);
+  --ink:#F5F6F8;--mut:#8E939C;--dim:#6B7079;
+  --main:#F5F6F8;--ok:#34D399;--warn:#F5A524;--blue:#3B9EFF;--vio:#8B5CF6;--cyan:#22D3EE;--red:#F4505E;
+  --coucou:#EC4899;--louis:#38BDF8;--korus:#FF5A4E;--docs:#A78BFA;
+  --spr:cubic-bezier(.32,1.22,.42,1);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;
+}
+body{margin:0;min-height:100vh;background:radial-gradient(1200px 620px at 50% -14%,#171d2b,#0B0C0E 62%) fixed,#0B0C0E;color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;align-items:center;padding:34px 20px 70px}
+h1{font-size:21px;margin:0;letter-spacing:-.02em;font-weight:650}
+h1 .tag{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#C9CCD2;background:rgba(255,255,255,.08);border:1px solid var(--line);padding:3px 9px;border-radius:999px;margin-left:8px;vertical-align:2px}
+.sub{color:var(--mut);font-size:13px;margin:9px 0 22px;max-width:820px;text-align:center;line-height:1.55}
+.sub b{color:var(--ink)}
+
+/* ---------- island ---------- */
+.island{width:912px;max-width:96vw;background:var(--island);border-radius:0 0 30px 30px;padding:44px 12px 12px;box-shadow:0 34px 90px -24px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.06);position:relative}
+.island::before,.island::after{content:"";position:absolute;top:0;width:16px;height:16px;pointer-events:none}
+.island::before{left:-16px;background:radial-gradient(circle at 0 100%,transparent 15.5px,#000 16px)}
+.island::after{right:-16px;background:radial-gradient(circle at 100% 100%,transparent 15.5px,#000 16px)}
+
+/* header */
+.hdr{position:absolute;top:8px;left:14px;right:14px;display:flex;align-items:center;justify-content:space-between}
+.tabs{display:flex;gap:7px;align-items:center}
+.tab{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:transparent;border:0;color:#8E939C;cursor:pointer;transition:background .2s,color .2s}
+.tab:hover{background:rgba(255,255,255,.08);color:#fff}
+.tab.on{background:#1D1F23;color:#F5F6F8}
+.tab.add{font-size:19px;font-weight:300}
+.tab svg{width:15px;height:15px}
+.hdr .r{display:flex;align-items:center;gap:7px}
+.mainlurk{display:flex;align-items:center;gap:7px;height:30px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#C9CCD2;cursor:pointer;padding:0 11px 0 4px;font-family:inherit;font-size:11.5px;font-weight:600;transition:all .25s var(--spr)}
+.mainlurk .md{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#0B0C0E;background:#F5F6F8}
+.mainlurk:hover{background:rgba(255,255,255,.1);color:#fff}
+.mainlurk.away{border-color:rgba(245,246,248,.4);box-shadow:0 0 0 1px rgba(245,246,248,.25),0 0 16px -6px #F5F6F8}
+.mainlurk .lurk{font-size:9.5px;color:var(--dim);font-weight:400}
+
+/* cards */
+.cards{display:grid;grid-template-columns:404px 1fr;gap:10px}
+@media(max-width:700px){.cards{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid rgba(255,255,255,.035);border-radius:20px;position:relative;overflow:hidden}
+.card.left{display:grid;grid-template-columns:120px 1fr;grid-template-rows:auto 1fr auto auto;gap:8px 6px;padding:14px 14px 12px;min-height:296px}
+.card.left::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 22% 128%,var(--wash,rgba(236,72,153,.22)) 0%,transparent 62%);transition:background .5s ease}
+.card.left>*{position:relative;z-index:1}
+
+/* big mochi */
+.bwrap{grid-column:1;grid-row:1/3;position:relative;align-self:center;justify-self:center;width:120px;height:120px}
+.bwrap canvas{width:100%;height:100%;display:block;position:relative;z-index:2}
+.bwrap .halo{position:absolute;inset:2%;border-radius:50%;background:radial-gradient(circle,var(--hc,#3B9EFF) 0%,transparent 64%);opacity:.42;filter:blur(10px);z-index:1;transition:background .6s,opacity .6s}
+.bwrap .ring{position:absolute;inset:6%;border-radius:50%;border:2px solid transparent;opacity:0;pointer-events:none;z-index:3}
+.bwrap.working .ring{opacity:1;border-top-color:var(--rc,#EC4899);animation:spin 1s linear infinite;filter:drop-shadow(0 0 7px var(--rc,#EC4899))}
+.bwrap.listening .ring{opacity:1;border-color:var(--rc,#EC4899);animation:ping 1.6s ease-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes ping{from{transform:scale(.9);opacity:.9}to{transform:scale(1.28);opacity:0}}
+
+/* agent line */
+.aline{grid-column:2;grid-row:1;display:flex;align-items:center;gap:8px;padding-top:4px;min-width:0}
+.aline .adot{width:8px;height:8px;border-radius:50%;background:var(--ac,#EC4899);box-shadow:0 0 10px var(--ac,#EC4899);flex:none}
+.aline b{font-size:13.5px;font-weight:650;color:#fff;white-space:nowrap;flex:none}
+.aline .tool{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.aline .cnt{margin-left:auto;font-size:11.5px;color:var(--dim);font-family:ui-monospace,Menlo,monospace;flex:none}
+.aline .exp{width:22px;height:22px;border-radius:50%;border:1px solid var(--line2);background:rgba(255,255,255,.05);color:#C9CCD2;cursor:pointer;display:grid;place-items:center;flex:none}
+.aline .exp svg{width:12px;height:12px}
+.aline .sctl{display:flex;gap:5px;flex:none}
+.sbtn{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#C9CCD2;cursor:pointer;display:grid;place-items:center;flex:none;transition:background .2s,color .2s;font-family:inherit;line-height:1}
+.aline .sbtn{width:22px;height:22px}
+.sbtn svg{width:13px;height:13px}
+.aline .sbtn svg{width:12px;height:12px}
+.sbtn:hover{background:rgba(255,255,255,.13);color:#fff}
+.sbtn.plus{border-style:dashed;font-size:16px;font-weight:300}
+.aline .sbtn.plus{font-size:14px}
+
+/* ticker */
+.slot{grid-column:2;grid-row:2;position:relative;min-height:0;overflow:hidden}
+.ticker{position:absolute;left:0;right:0;top:0;height:96px;overflow:hidden;
+  -webkit-mask:linear-gradient(transparent,#000 22%,#000 78%,transparent);mask:linear-gradient(transparent,#000 22%,#000 78%,transparent)}
+.summary{position:absolute;left:0;right:0;top:0;bottom:0;display:none;flex-direction:column;justify-content:center;gap:7px;animation:sumIn .5s var(--spr)}
+.slot.done .ticker{display:none}
+.slot.done .summary{display:flex}
+@keyframes sumIn{from{opacity:0;transform:translateX(-10px)}}
+.summary .shead{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dim)}
+.summary .shead b{color:#C9CCD2;font-weight:600}
+.summary .sdot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 9px var(--ok);flex:none}
+.summary .swhen{margin-left:auto;color:var(--dim)}
+.summary .stext{font-size:12.5px;line-height:1.4;color:#E8E9EC}
+.tk-in{position:absolute;left:0;right:0;top:2px;transition:transform .45s cubic-bezier(.3,.9,.3,1)}
+.ln{height:30px;display:flex;align-items:center;gap:8px;font-size:13px;color:#5F646D;white-space:nowrap;overflow:hidden}
+.ln svg{width:14px;height:14px;flex:none;opacity:.85}
+.ln span{overflow:hidden;text-overflow:ellipsis}
+.ln.cur{color:#F5F6F8;font-size:14px;font-weight:500}
+.ln.cur .txt{background:linear-gradient(90deg,#7c818a 0%,#fff 40%,#7c818a 70%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:sh 2.2s linear infinite}
+@keyframes sh{from{background-position:120% 0}to{background-position:-100% 0}}
+
+/* voice bar */
+.vbar{grid-column:1/3;grid-row:4;display:flex;flex-direction:row;align-items:center;gap:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:15px;padding:9px 10px 9px 12px;transition:border-color .3s,background .3s,gap .3s}
+.vbar.typing{flex-direction:column;align-items:stretch;gap:7px}
+.vbar.live{border-color:rgba(236,72,153,.45);background:rgba(236,72,153,.07)}
+.vbar .cap{flex:1;min-width:0;font-size:12.5px;line-height:1.35;color:#E8E9EC;cursor:text}
+.vbar.typing .cap{cursor:default}
+.vbar .cap small{display:block;font-size:10.5px;color:var(--dim);margin-bottom:1px}
+.vbar .cap b{color:#fff}
+.vrow{display:flex;align-items:center;gap:8px;flex:none}
+.vbar.typing .vrow{width:100%;align-items:flex-end}
+.typein{display:none;background:transparent;border:0;outline:none;color:#fff;font:inherit;font-size:12.5px;line-height:1.4;padding:3px 2px;resize:none;overflow-y:auto;overflow-x:hidden;height:20px;transition:height .16s ease}
+.vbar.typing .typein{display:block;flex:1;min-width:0}
+.typein::placeholder{color:#6E737C}
+.vbar.has-suggest .typein::placeholder{color:#8A8F98;font-style:italic}
+.shint{display:none;align-items:center;gap:4px;flex:none;font-size:10px;color:#8E939C;border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap;background:rgba(255,255,255,.03)}
+.vbar.typing.has-suggest .shint{display:inline-flex}
+.card.left.riser-on .vbar.typing .cap{display:none}
+.vbar .wave{display:none;gap:2.5px;align-items:center;height:20px;flex:none}
+.vbar.typing .wave,.vbar.live .wave{display:flex}
+.vbar .wave i{width:3px;height:4px;border-radius:3px;background:var(--ac,#EC4899);opacity:.5;transition:height .2s}
+.vbar.live .wave i{opacity:1;animation:wv .7s ease-in-out infinite}
+.wave i:nth-child(2n){animation-delay:.1s}.wave i:nth-child(3n){animation-delay:.2s}.wave i:nth-child(4n){animation-delay:.32s}
+@keyframes wv{0%,100%{height:4px}50%{height:18px}}
+.mic{width:38px;height:38px;border-radius:50%;border:1px solid var(--line2);background:rgba(255,255,255,.06);color:#C9CCD2;cursor:pointer;display:grid;place-items:center;flex:none;transition:all .22s var(--spr)}
+.mic svg{width:17px;height:17px}
+.mic:hover{background:rgba(255,255,255,.12);color:#fff}
+.mic.live{background:#FF5A4E;border-color:#FF5A4E;color:#fff;animation:pp 1.4s infinite}
+@keyframes pp{0%{box-shadow:0 0 0 0 rgba(255,90,78,.5)}70%{box-shadow:0 0 0 16px rgba(255,90,78,0)}100%{box-shadow:0 0 0 0 rgba(255,90,78,0)}}
+
+/* right card */
+.card.right{padding:14px;display:flex;flex-direction:column;gap:9px}
+.rhead{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--dim)}
+.pills{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pill{position:relative;display:flex;align-items:center;gap:10px;height:44px;border-radius:22px;border:1px solid var(--bd,rgba(255,255,255,.1));background:var(--bgc,rgba(255,255,255,.03));padding:0 12px 0 6px;cursor:pointer;font-family:inherit;overflow:hidden;transition:all .28s var(--spr)}
+.pill:hover{transform:translateY(-1px);filter:brightness(1.12)}
+.pill .pmc{position:relative;width:34px;height:32px;flex:none}
+.pill .pmc canvas{width:100%;height:100%;display:block}
+.pill .pring{position:absolute;inset:-3px;border-radius:50%;border:2px solid transparent;opacity:0;pointer-events:none}
+.pill.working .pring{opacity:1;border-top-color:#3B9EFF;animation:spin .9s linear infinite}
+.pill .pn{font-size:12.5px;font-weight:600;color:var(--pc,#C9CCD2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill .pst{margin-left:auto;font-size:10px;color:var(--dim);flex:none}
+.pill.focused{box-shadow:0 0 0 1px var(--c),0 0 20px -6px var(--c)}
+.pill.add{border-style:dashed;border-color:rgba(255,255,255,.22);background:transparent}
+.pill.add .pmc{display:grid;place-items:center;font-size:18px;color:#8E939C;font-weight:300}
+.pill.add .pn{color:#8E939C}
+.rfoot{display:flex;align-items:center;gap:8px;margin-top:auto;font-size:11px;color:var(--dim)}
+.rfoot .d{width:7px;height:7px;border-radius:50%;background:#3B9EFF;box-shadow:0 0 8px #3B9EFF;animation:blink 1.4s infinite}
+@keyframes blink{50%{opacity:.35}}
+
+/* riser */
+.riser{grid-column:1/3;grid-row:3;display:flex;align-items:center;gap:10px;border-radius:12px;border:1px solid transparent;background:transparent;padding:0 11px;max-height:0;opacity:0;overflow:hidden;transition:max-height .42s var(--spr),opacity .28s ease,padding .35s var(--spr),border-color .35s ease,background .35s ease}
+.riser.show{max-height:92px;opacity:1;padding:9px 11px;border-color:rgba(245,165,36,.28);background:rgba(245,165,36,.06)}
+.riser.plan.show{border-color:rgba(139,92,246,.3);background:rgba(139,92,246,.07)}
+.riser .si{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;background:rgba(245,165,36,.14);color:#FFC86B}
+.riser.plan .si{background:rgba(139,92,246,.16);color:#D6C6FF}
+.riser .si svg{width:14px;height:14px}
+.riser .txt{flex:1;min-width:0}
+.riser .txt b{font-size:12px;font-weight:650;display:block;color:#F5E9D6}
+.riser.plan .txt b{color:#E4DBFF}
+.riser .txt small{font-size:10.5px;color:var(--mut);display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.riser .acts{display:flex;gap:6px;flex:none}
+.abtn{border:0;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:650;cursor:pointer;font-family:inherit;transition:transform .15s}
+.abtn:active{transform:scale(.96)}
+.abtn.y{background:var(--ok);color:#06281C}
+.abtn.n{background:transparent;border:1px solid rgba(255,255,255,.25);color:#fff}
+.abtn.g{background:var(--vio);color:#fff}
+
+/* history */
+.histpop{position:absolute;top:42px;right:14px;width:320px;background:#1C1E22;border:1px solid var(--line2);border-radius:16px;z-index:40;box-shadow:0 26px 60px rgba(0,0,0,.7);display:none;overflow:hidden;animation:pop .28s var(--spr)}
+.histpop.open{display:block}
+.histpop .hp{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line)}
+.histpop .hp b{font-size:12px}.histpop .hp span{font-size:10.5px;color:var(--dim)}
+.histpop input{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);outline:none;color:#fff;font-size:12.5px;padding:9px 12px;font-family:inherit}
+.hlist{max-height:230px;overflow-y:auto}
+.hitem{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:12.5px;cursor:pointer;color:#C9CCD2;border-bottom:1px solid rgba(255,255,255,.04)}
+.hitem:hover{background:rgba(255,255,255,.06)}
+.hitem.on{color:#fff;background:rgba(236,72,153,.1)}
+.hdot{width:7px;height:7px;border-radius:50%;background:var(--sc,#EC4899);flex:none}
+.hdot.busy{box-shadow:0 0 0 3px rgba(59,158,255,.25);background:var(--blue)}
+.hitem .t{margin-left:auto;font-size:10.5px;color:var(--dim);flex:none}
+.hitem .rew{font-size:10px;color:var(--mut);border:1px solid var(--line2);border-radius:999px;padding:1px 7px;flex:none}
+@keyframes pop{from{opacity:0;transform:scale(.97)}}
+
+/* controls + note */
+.controls{display:flex;gap:8px;margin:20px 0 8px;flex-wrap:wrap;justify-content:center}
+.btn{border:1px solid var(--line);background:#1C1E22;color:#E8E9EC;border-radius:999px;padding:9px 16px;font-size:12.5px;cursor:pointer;font-weight:600;transition:all .2s}
+.btn:hover{background:#26282E}
+.btn.primary{background:#F5F6F8;color:#0B0C0E;border-color:#F5F6F8}
+.note{width:912px;max-width:96vw;margin-top:20px;background:#101114;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.note h2{font-size:13px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.note h2 .badge{font-size:10px;font-weight:700;color:#C9CCD2;background:rgba(255,255,255,.07);border:1px solid var(--line);padding:2px 8px;border-radius:999px}
+.ngrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:680px){.ngrid{grid-template-columns:1fr}}
+.ncol h3{font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 8px}
+.ncol.keep h3{color:#7EE2A8}.ncol.ext h3{color:#FFC86B}
+.ncol ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+.ncol li{font-size:12px;color:var(--mut);line-height:1.5;display:flex;gap:8px}
+.ncol li b{color:#E8E9EC;font-weight:600}
+.ncol li .b{flex:none;width:5px;height:5px;border-radius:50%;margin-top:7px}
+.ncol.keep .b{background:#34D399}.ncol.ext .b{background:#F5A524}
+.verdict{margin-top:14px;font-size:12px;color:var(--mut);line-height:1.6;border-top:1px solid var(--line);padding-top:12px}
+.verdict b{color:var(--ink)}
+
+/* ---------- capture frame, one labelled island per beat ---------- */
+.capture{width:640px;max-width:96vw;margin:0 0 26px}
+.clab{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding-left:2px}
+.clab .badge{font-size:10px;font-weight:700;letter-spacing:.06em;color:#C9CCD2;background:rgba(255,255,255,.07);border:1px solid var(--line);padding:2px 8px;border-radius:999px}
+.clab b{font-size:12.5px;font-weight:650}
+.clab .state{font-size:11px;color:var(--dim)}
+.cnote{margin:8px 2px 0;font-size:11px;color:var(--dim);line-height:1.55}
+.cnote b{color:#C9CCD2;font-weight:600}
+h2.sec{width:640px;max-width:96vw;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#8E939C;margin:6px 0 14px;display:flex;align-items:center;gap:10px}
+h2.sec::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* ---------- the same island at shipping size: 640 × 160, hard 98 pt box ---------- */
+.island.real98{width:640px;padding:52px 10px 10px;border-radius:0 0 22px 22px}
+.real98 .cards{grid-template-columns:312px 1fr;gap:8px;height:98px}
+.real98 .card{padding:6px}
+.real98 .card.left{grid-template-columns:36px 1fr;grid-template-rows:17px 1fr auto 20px;gap:2px 5px;min-height:0}
+.real98 .bwrap{width:36px;height:36px}
+.real98 .card.left::before{background:radial-gradient(130% 100% at 22% 128%,var(--wash,rgba(236,72,153,.22)) 0%,transparent 62%)}
+.real98 .aline{padding-top:0;gap:5px}
+.real98 .aline .adot{width:7px;height:7px}
+.real98 .aline b{font-size:11.5px}
+.real98 .aline .tool{font-size:10px}
+.real98 .aline .cnt{font-size:10px}
+.real98 .aline .sbtn{width:17px;height:17px}
+.real98 .aline .sbtn svg{width:9px;height:9px}
+.real98 .aline .exp{width:17px;height:17px}
+.real98 .aline .exp svg{width:9px;height:9px}
+.real98 .ticker{height:100%}
+.real98 .tk-in{top:50%}
+.real98 .ln{height:13px;font-size:10.5px;line-height:1;gap:4px}
+.real98 .ln svg{width:10px;height:10px}
+.real98 .ln.cur{font-size:11.5px}
+.real98 .summary{gap:1px}
+.real98 .summary .shead{font-size:10.5px;line-height:1.1;gap:5px}
+.real98 .summary .sdot{width:6px;height:6px}
+.real98 .summary .stext{font-size:10.5px;line-height:1.28}
+.real98 .vbar{border-radius:9px;padding:0 3px 0 8px;gap:6px}
+.real98 .vbar .cap{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.real98 .vbar .cap small{display:inline;font-size:10px;margin:0 5px 0 0}
+.real98 .vbar .typein{font-size:10.5px;height:14px;padding:0}
+.real98 .vbar .shint{font-size:9px;padding:0 5px}
+.real98 .vbar .wave{height:13px;gap:2px}
+.real98 .vbar .wave i{width:2px}
+.real98 .vbar .sbtn.plus{width:17px;height:17px;font-size:12px}
+.real98 .mic{width:18px;height:18px}
+.real98 .mic svg{width:10px;height:10px}
+.real98 .riser{gap:6px;border-radius:9px;padding:0 6px}
+.real98 .riser.show{max-height:20px;padding:0 6px}
+.real98 .riser .si{width:13px;height:13px;border-radius:4px}
+.real98 .riser .si svg{width:9px;height:9px}
+.real98 .riser .txt b{font-size:10.5px;display:inline}
+.real98 .riser .txt small{font-size:9.5px;display:inline;margin:0 0 0 6px}
+.real98 .riser .acts{gap:4px}
+.real98 .abtn{padding:3px 9px;font-size:9.5px}
+.real98 .card.right{padding:6px;gap:6px}
+.real98 .pills{grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:5px;flex:1;min-height:0}
+.real98 .pill{height:auto;border-radius:14px;padding:0 6px 0 4px;gap:6px}
+.real98 .pill .pmc{width:20px;height:20px}
+.real98 .pill .pn{font-size:10.5px}
+.real98 .pill .pst{font-size:8.5px}
+.real98 .pill.add .pmc{font-size:15px}
+.real98 .pill.add:only-child{grid-column:1/-1;grid-row:1/-1}
+.real98 .rfoot{font-size:9.5px;gap:5px}
+.real98 .rfoot .d{width:6px;height:6px}
+.real98 .card.right .hlist{display:none}
+.real98 .card.right[data-right="threads"] .pills,.real98 .card.right[data-right="threads"] .rfoot{display:none}
+.real98 .card.right[data-right="threads"] .hlist{display:block;flex:1;min-height:0;max-height:none;overflow-y:auto}
+.real98 .hitem{padding:3px 2px;font-size:10.5px;gap:6px}
+.real98 .hdot{width:6px;height:6px}
+.real98 .hitem .rew{font-size:9px;padding:0 6px}
+.real98 .hitem .t{font-size:9px}
+/* CHAT is the island's only flexible-height surface: 640 × 212, 150 pt box */
+.real98.tall .cards{height:150px}
+.real98.tall .card.left{grid-template-columns:40px 1fr;grid-template-rows:18px 1fr auto auto;gap:4px 6px}
+.real98.tall .bwrap{width:40px;height:40px}
+.real98.tall .vbar{border-radius:13px;padding:6px 8px 6px 10px;gap:8px}
+.real98.tall .vbar.typing{gap:5px;padding:7px 9px 6px 11px}
+.real98.tall .vbar .cap{font-size:11px}
+.real98.tall .vbar.typing .cap{flex:none}
+.real98.tall .vbar .cap small{font-size:10px}
+.real98.tall .vbar .typein{font-size:11px;height:15px;padding:1px}
+.real98.tall .vbar .shint{font-size:9.5px}
+.real98.tall .vbar .wave{height:16px}
+.real98.tall .vbar .sbtn.plus{width:22px;height:22px;font-size:13px}
+.real98.tall .mic{width:26px;height:26px}
+.real98.tall .mic svg{width:13px;height:13px}
+/* one accent per agent — the two places the base colours a state instead */
+.summary .sdot{background:var(--ac,var(--ok));box-shadow:0 0 9px var(--ac,var(--ok))}
+.pill.working .pring{border-top-color:var(--c,#3B9EFF)}
+</style>
+</head>
+<body>
+<h1>HOME + CHAT <span class="tag">island split</span></h1>
+<p class="sub">The island's two surfaces have swapped jobs. <b>HOME (house)</b> is where the agents tell you what needs you — a permission, a failure, a question, a finished run — one line at a time, never a queue of cards. <b>CHAT (bubble)</b> is the voice harness: the big Mochi you talk to, the voice bar, the conversation. Same card, same vocabulary. <b>▶ Demo tour</b> plays the whole arc, in motion, in the first capture.</p>
+
+<h2 class="sec">HOME — what needs you</h2>
+
+<!-- ============================================================= HOME · caught up -->
+<div class="capture">
+  <div class="clab"><span class="badge">HOME</span><b>Caught up</b><span class="state">nothing pending · the state you see most</span></div>
+  <div class="island real98" data-stage="caught-up" data-surface="home" data-focus="coucou" data-roster="full" data-live="1">
+    <div class="hdr">
+      <div class="tabs">
+        <button class="tab" data-tab="home" title="Home — what needs you"></button>
+        <button class="tab" data-tab="chat" title="Chat — the voice harness"></button>
+        <button class="tab add" title="Add a workspace">+</button>
+      </div>
+      <div class="r"><button class="tab" data-tab="mute" title="Mute"></button></div>
+    </div>
+    <div class="cards">
+      <div class="card left">
+        <div class="bwrap"><span class="halo"></span><span class="ring"></span><canvas></canvas></div>
+        <div class="aline">
+          <span class="adot"></span>
+          <b>coucou-app</b><span class="tool">OpenCode</span>
+          <span class="cnt">1/12</span>
+          <span class="sctl"><button class="sbtn" data-icon="clock" title="Threads"></button></span>
+          <button class="exp" title="Open in workspace"></button>
+        </div>
+        <div class="slot">
+          <div class="ticker"><div class="tk-in"></div></div>
+          <div class="summary">
+            <div class="shead"><span class="sdot"></span>Done · <b>coucou-app</b><span class="swhen">just now</span></div>
+            <div class="stext">Fixed — missing await on signIn(), LoginView.swift:42. Tests pass.</div>
+          </div>
+        </div>
+        <div class="vbar">
+          <div class="cap"><small>coucou-app · voice</small><span>Nothing needs you.</span></div>
+          <div class="vrow">
+            <textarea class="typein" rows="1" placeholder="Type to coucou-app…" autocomplete="off" spellcheck="false"></textarea>
+            <span class="shint">⇥ tab</span>
+            <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <button class="sbtn plus" title="New session">+</button>
+            <button class="mic" title="push to talk"></button>
+          </div>
+        </div>
+        <div class="riser"></div>
+      </div>
+      <div class="card right" data-right="roster">
+        <div class="pills"></div>
+        <div class="hlist"></div>
+        <div class="rfoot"><span class="d"></span><span>all agents idle · tap a Mochi to make it the main</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cnote"><b>Two lines of text, one body.</b> The Mochi breathes and blinks, the slot holds the done summary (<b>.summary</b>, sliding in on <b>sumIn</b>), and the right card is the roster: three <b>.pill</b>s with mini Mochis and the dashed <b>.pill.add</b> — the add affordance, not a catalogue button. No header, no chip, no dot row.</p>
+</div>
+
+<!-- ============================================================= HOME · needs you -->
+<div class="capture">
+  <div class="clab"><span class="badge">HOME</span><b>Needs you</b><span class="state">a permission is pending · the riser is open</span></div>
+  <div class="island real98" data-stage="needs-you" data-surface="home" data-focus="coucou" data-roster="full">
+    <div class="hdr">
+      <div class="tabs">
+        <button class="tab" data-tab="home" title="Home — what needs you"></button>
+        <button class="tab" data-tab="chat" title="Chat — the voice harness"></button>
+        <button class="tab add" title="Add a workspace">+</button>
+      </div>
+      <div class="r"><button class="tab" data-tab="mute" title="Mute"></button></div>
+    </div>
+    <div class="cards">
+      <div class="card left">
+        <div class="bwrap"><span class="halo"></span><span class="ring"></span><canvas></canvas></div>
+        <div class="aline">
+          <span class="adot"></span>
+          <b>coucou-app</b><span class="tool">OpenCode</span>
+          <span class="cnt">1/12</span>
+          <span class="sctl"><button class="sbtn" data-icon="clock" title="Threads"></button></span>
+          <button class="exp" title="Open in workspace"></button>
+        </div>
+        <div class="slot">
+          <div class="ticker"><div class="tk-in"></div></div>
+          <div class="summary">
+            <div class="shead"><span class="sdot"></span>Done · <b>coucou-app</b><span class="swhen">just now</span></div>
+            <div class="stext">Fixed — missing await on signIn(), LoginView.swift:42. Tests pass.</div>
+          </div>
+        </div>
+        <div class="vbar">
+          <div class="cap"><small>coucou-app · voice</small><span>Waiting for your okay…</span></div>
+          <div class="vrow">
+            <textarea class="typein" rows="1" placeholder="Type to coucou-app…" autocomplete="off" spellcheck="false"></textarea>
+            <span class="shint">⇥ tab</span>
+            <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <button class="sbtn plus" title="New session">+</button>
+            <button class="mic" title="push to talk"></button>
+          </div>
+        </div>
+        <div class="riser"></div>
+      </div>
+      <div class="card right" data-right="roster">
+        <div class="pills"></div>
+        <div class="hlist"></div>
+        <div class="rfoot"><span class="d"></span><span>all agents idle · tap a Mochi to make it the main</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cnote"><b>The state is the face and the colour.</b> <b>approval</b> widens the eyes, bounces the body and tints the halo amber; the agent line names who is asking (dot + name + tool + <b>.cnt</b>), the slot's bright line is the ask with the step above and the next step below dimmed, and the riser opens with the harness's own strip — <b>.si</b>, <b>.txt</b>, <b>.abtn</b>. The voice bar footer reads <b>Waiting for your okay…</b></p>
+</div>
+
+<!-- ============================================================= HOME · after yes -->
+<div class="capture">
+  <div class="clab"><span class="badge">HOME</span><b>After yes</b><span class="state">riser collapsed · the ticker rolled on</span></div>
+  <div class="island real98" data-stage="after-yes" data-surface="home" data-focus="coucou" data-roster="full">
+    <div class="hdr">
+      <div class="tabs">
+        <button class="tab" data-tab="home" title="Home — what needs you"></button>
+        <button class="tab" data-tab="chat" title="Chat — the voice harness"></button>
+        <button class="tab add" title="Add a workspace">+</button>
+      </div>
+      <div class="r"><button class="tab" data-tab="mute" title="Mute"></button></div>
+    </div>
+    <div class="cards">
+      <div class="card left">
+        <div class="bwrap"><span class="halo"></span><span class="ring"></span><canvas></canvas></div>
+        <div class="aline">
+          <span class="adot"></span>
+          <b>coucou-app</b><span class="tool">OpenCode</span>
+          <span class="cnt">1/12</span>
+          <span class="sctl"><button class="sbtn" data-icon="clock" title="Threads"></button></span>
+          <button class="exp" title="Open in workspace"></button>
+        </div>
+        <div class="slot">
+          <div class="ticker"><div class="tk-in"></div></div>
+          <div class="summary">
+            <div class="shead"><span class="sdot"></span>Done · <b>coucou-app</b><span class="swhen">just now</span></div>
+            <div class="stext">Fixed — missing await on signIn(), LoginView.swift:42. Tests pass.</div>
+          </div>
+        </div>
+        <div class="vbar">
+          <div class="cap"><small>coucou-app · voice</small><span>Done — the login hang is fixed.</span></div>
+          <div class="vrow">
+            <textarea class="typein" rows="1" placeholder="Type to coucou-app…" autocomplete="off" spellcheck="false"></textarea>
+            <span class="shint">⇥ tab</span>
+            <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <button class="sbtn plus" title="New session">+</button>
+            <button class="mic" title="push to talk"></button>
+          </div>
+        </div>
+        <div class="riser"></div>
+      </div>
+      <div class="card right" data-right="roster">
+        <div class="pills"></div>
+        <div class="hlist"></div>
+        <div class="rfoot"><span class="d"></span><span>all agents idle · tap a Mochi to make it the main</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cnote"><b>Clearing one opens the next — as motion.</b> One beat later the riser is back to <b>max-height:0</b>, the ticker has rolled 450&nbsp;ms on <b>cubic-bezier(.3,.9,.3,1)</b> and the finished step is the bright line, and the Mochi is <b>finished</b>: happy eyes, a 900&nbsp;ms hop, the 950&nbsp;ms roll, the halo back in the agent's own colour. No chip, no queue card, nothing counted.</p>
+</div>
+
+<!-- ============================================================= HOME · first run -->
+<div class="capture">
+  <div class="clab"><span class="badge">HOME</span><b>First run</b><span class="state">roster empty — nothing added yet</span></div>
+  <div class="island real98" data-stage="first-run" data-surface="home" data-focus="main" data-roster="empty">
+    <div class="hdr">
+      <div class="tabs">
+        <button class="tab" data-tab="home" title="Home — what needs you"></button>
+        <button class="tab" data-tab="chat" title="Chat — the voice harness"></button>
+        <button class="tab add" title="Add a workspace">+</button>
+      </div>
+      <div class="r"><button class="tab" data-tab="mute" title="Mute"></button></div>
+    </div>
+    <div class="cards">
+      <div class="card left">
+        <div class="bwrap"><span class="halo"></span><span class="ring"></span><canvas></canvas></div>
+        <div class="aline">
+          <span class="adot"></span>
+          <b>Main</b><span class="tool">orchestrator</span>
+          <span class="cnt">✦</span>
+          <span class="sctl"><button class="sbtn" data-icon="clock" title="Threads"></button></span>
+          <button class="exp" title="Open in workspace"></button>
+        </div>
+        <div class="slot">
+          <div class="ticker"><div class="tk-in"></div></div>
+          <div class="summary">
+            <div class="shead"><span class="sdot"></span>Done · <b>coucou-app</b><span class="swhen">just now</span></div>
+            <div class="stext">Fixed — missing await on signIn(), LoginView.swift:42. Tests pass.</div>
+          </div>
+        </div>
+        <div class="vbar">
+          <div class="cap"><small>Main · voice</small><span>Add a workspace to get started.</span></div>
+          <div class="vrow">
+            <textarea class="typein" rows="1" placeholder="Type to Main…" autocomplete="off" spellcheck="false"></textarea>
+            <span class="shint">⇥ tab</span>
+            <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <button class="sbtn plus" title="New session">+</button>
+            <button class="mic" title="push to talk"></button>
+          </div>
+        </div>
+        <div class="riser"></div>
+      </div>
+      <div class="card right" data-right="roster">
+        <div class="pills"></div>
+        <div class="hlist"></div>
+        <div class="rfoot"><span class="d"></span><span>no agents yet · add one to give it a folder</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cnote"><b>Empty is the first run, not a failure state.</b> The roster is one dashed <b>.pill.add</b> filling the grid (<b>:only-child</b>), the left card is at its quietest — a cream <b>idle</b> Mochi and a one-line slot — and the footer is the only instruction. Nothing shows the workspaces you have not added.</p>
+</div>
+
+<h2 class="sec">CHAT — the voice harness</h2>
+
+<!-- ============================================================= CHAT -->
+<div class="capture">
+  <div class="clab"><span class="badge">CHAT</span><b>The voice harness</b><span class="state">same card · the voice bar is the input · the conversation is the list</span></div>
+  <div class="island real98 tall" data-stage="chat" data-surface="chat" data-focus="coucou" data-roster="full">
+    <div class="hdr">
+      <div class="tabs">
+        <button class="tab" data-tab="home" title="Home — what needs you"></button>
+        <button class="tab" data-tab="chat" title="Chat — the voice harness"></button>
+        <button class="tab add" title="Add a workspace">+</button>
+      </div>
+      <div class="r"><button class="tab" data-tab="mute" title="Mute"></button></div>
+    </div>
+    <div class="cards">
+      <div class="card left">
+        <div class="bwrap"><span class="halo"></span><span class="ring"></span><canvas></canvas></div>
+        <div class="aline">
+          <span class="adot"></span>
+          <b>coucou-app</b><span class="tool">OpenCode</span>
+          <span class="cnt">1/12</span>
+          <span class="sctl"><button class="sbtn" data-icon="clock" title="Threads"></button></span>
+          <button class="exp" title="Open in workspace"></button>
+        </div>
+        <div class="slot">
+          <div class="ticker"><div class="tk-in"></div></div>
+          <div class="summary">
+            <div class="shead"><span class="sdot"></span>Done · <b>coucou-app</b><span class="swhen">just now</span></div>
+            <div class="stext">Fixed — missing await on signIn(), LoginView.swift:42. Tests pass.</div>
+          </div>
+        </div>
+        <div class="vbar">
+          <div class="cap"><small>coucou-app · voice</small><span>Listening — ask anything.</span></div>
+          <div class="vrow">
+            <textarea class="typein" rows="1" placeholder="Type to coucou-app…" autocomplete="off" spellcheck="false"></textarea>
+            <span class="shint">⇥ tab</span>
+            <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <button class="sbtn plus" title="New session">+</button>
+            <button class="mic" title="push to talk"></button>
+          </div>
+        </div>
+        <div class="riser"></div>
+      </div>
+      <div class="card right" data-right="threads">
+        <div class="pills"></div>
+        <div class="hlist"></div>
+        <div class="rfoot"><span class="d"></span><span>all agents idle · tap a Mochi to make it the main</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="cnote"><b>The same left card, with the composer promoted.</b> <b>.vbar.typing</b> carries the caption, the textarea, the <b>⇥ tab</b> hint (the suggestion arrives as the italic placeholder), the animated <b>.wave</b> and the mic. The right card is the conversation, on the history's own rows.</p>
+  <p class="verdict"><b>The freed right card holds the conversation because that is the thing you scroll.</b> On HOME the same card holds the roster, and the run itself lives in the single-line slot; on CHAT the trail is long enough to deserve the column, so it becomes the <b>.hitem</b> list and the island is allowed its taller box.</p>
+</div>
+
+<div class="controls">
+  <button class="btn primary" id="play">▶ Demo tour</button>
+  <button class="btn" id="bAppr">Approval moment</button>
+  <button class="btn" id="bDone">Done</button>
+  <button class="btn" id="bEmpty">Empty roster</button>
+  <button class="btn" id="bChat">Chat</button>
+  <button class="btn" id="bReset">Reset</button>
+</div>
+
+<div class="note">
+  <h2>What is the harness, what is re-bound <span class="badge">five captures · one vocabulary</span></h2>
+  <div class="ngrid">
+    <div class="ncol keep">
+      <h3>Kept verbatim</h3>
+      <ul>
+        <li><span class="b"></span><b>Palette and springs</b> — <code>:root</code> and <code>--spr</code> untouched: #000 island, #141518 card, #F5F6F8 ink, #8E939C / #6B7079 dim, the agent colours.</li>
+        <li><span class="b"></span><b>One body</b> — the canvas <code>Mochi</code> class, <code>STATE</code>, <code>hopPose</code>, <code>IC</code> and one <code>requestAnimationFrame</code> loop. The face is the state: 1.4 s blink, breathe, 900 ms hop, 950 ms roll, 1.6 s ping, 1 s spin.</li>
+        <li><span class="b"></span><b>One line</b> — <code>.slot</code> holds either the <code>.ticker</code> (30 pt lines scaled, current line shimmering 2.2 s, 450 ms <code>cubic-bezier(.3,.9,.3,1)</code> roll, neighbours #5F646D) or the <code>.summary</code> sliding in on <code>sumIn</code>.</li>
+        <li><span class="b"></span><b>One riser</b> — <code>.riser</code> from <code>max-height:0</code> on <code>--spr</code>, the original's <code>.si</code> / <code>.txt</code> / <code>.acts</code> / <code>.abtn</code> strip, amber 6 % tint.</li>
+        <li><span class="b"></span><b>One accent per agent</b> — <code>.adot</code>, <code>.halo</code> (<code>--hc</code>, .42, blur 10), <code>.card.left::before</code> (<code>--wash</code>, 22 %), <code>.pring</code>, the pill tint (13 % / 32 %), the <code>.wave</code> bars.</li>
+      </ul>
+    </div>
+    <div class="ncol ext">
+      <h3>Re-bound at island size</h3>
+      <ul>
+        <li><span class="b"></span><b>The surfaces swapped jobs</b> — HOME is the agents' one-line report plus the roster; CHAT is the Mochi + voice bar plus the conversation list. Two surfaces, one card.</li>
+        <li><span class="b"></span><b>Type inside 640 × 160</b> — the base scale is re-pointed onto the 98 pt box: name 11.5, ticker 10.5 / 11.5, cap 10.5, riser 10.5 / 9.5, pill 10.5 / 8.5.</li>
+        <li><span class="b"></span><b>The ticker centres on the current line</b> — <code>.tk-in{top:50%}</code> with <code>translateY(−(i·13 + 6.5)px)</code>, so the bright line stays centred whether the slot is 21 pt (riser open) or 41 pt (at rest).</li>
+        <li><span class="b"></span><b>The caption is one line</b> — <code>.vbar .cap small</code> goes inline instead of stacking, so the four resting controls (thread, expand, +, mic) survive the shorter bar.</li>
+        <li><span class="b"></span><b>Two colours come back to the agent</b> — <code>.summary .sdot</code> from <code>--ok</code> to <code>--ac</code>, and the pill's working ring from #3B9EFF to <code>--c</code>.</li>
+        <li><span class="b"></span><b>CHAT is the flexible surface</b> — <code>.real98.tall</code> is 640 × 212 (150 pt box), the only box where the conversation can scroll.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="verdict"><b>Why it is still the same app:</b> nothing is enumerated. There is one Mochi, one self-replacing line, one composer, and a riser that exists only while a decision does. HOME never counts what is behind the line, and CHAT never adds a second vocabulary — the conversation is the history's own rows, given the whole card.</div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const $$=s=>[...document.querySelectorAll(s)];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const lerp=(a,b,t)=>a+(b-a)*t;
+function hexRgb(h){const m=h.match(/^#?([0-9a-f]{6})$/i);if(!m)return[230,233,238];const n=parseInt(m[1],16);return[(n>>16)&255,(n>>8)&255,n&255];}
+function rgba(c,a){return`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;}
+function mix(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+function light(hex,amt){const[r,g,b]=hexRgb(hex);const c=mix([r,g,b],[255,255,255],amt);return`rgb(${c[0]|0},${c[1]|0},${c[2]|0})`;}
+function tintBg(hex){const[r,g,b]=hexRgb(hex);return`rgba(${r},${g},${b},.13)`;}
+function tintBd(hex){const[r,g,b]=hexRgb(hex);return`rgba(${r},${g},${b},.32)`;}
+function wash(hex){const[r,g,b]=hexRgb(hex);return`rgba(${r},${g},${b},.22)`;}
+function rr(x,X,Y,W,H,R){R=Math.max(0,Math.min(R,W/2,H/2));x.beginPath();x.moveTo(X+R,Y);x.arcTo(X+W,Y,X+W,Y+H,R);x.arcTo(X+W,Y+H,X,Y+H,R);x.arcTo(X,Y+H,X,Y,R);x.arcTo(X,Y,X+W,Y,R);x.closePath();}
+function supPath(rx,ry){const p=new Path2D();for(let i=0;i<=72;i++){const a=i/72*Math.PI*2,ca=Math.cos(a),sa=Math.sin(a);const px=rx*Math.sign(ca)*Math.pow(Math.abs(ca),2/2.7),py=ry*Math.sign(sa)*Math.pow(Math.abs(sa),2/2.7);i?p.lineTo(px,py):p.moveTo(px,py);}p.closePath();return p;}
+const IC={
+ mic:'<svg viewBox="0 0 16 16" fill="none"><rect x="5.6" y="1.6" width="4.8" height="8" rx="2.4" fill="currentColor"/><path d="M3.6 7.6a4.4 4.4 0 008.8 0M8 12v2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+ home:'<svg viewBox="0 0 16 16"><path d="M2.5 7.2L8 2.5l5.5 4.7V13a.8.8 0 01-.8.8H10V10H6v3.8H3.3a.8.8 0 01-.8-.8z" fill="currentColor"/></svg>',
+ clock:'<svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 4.6V8l2.4 1.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+ sound:'<svg viewBox="0 0 16 16"><path d="M2 6h2.5L8 3v10L4.5 10H2z" fill="currentColor"/><path d="M10.5 5.5a3.5 3.5 0 010 5M12.3 3.8a6 6 0 010 8.4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>',
+ mute:'<svg viewBox="0 0 16 16"><path d="M2 6h2.5L8 3v10L4.5 10H2z" fill="currentColor"/><path d="M10.5 6l3 4M13.5 6l-3 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+ exp:'<svg viewBox="0 0 16 16" fill="none"><path d="M5 11L11 5M6.5 5H11v4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+ read:'<svg viewBox="0 0 16 16" fill="none"><rect x="3" y="2.5" width="10" height="11" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5.4 6h5.2M5.4 8.6h5.2M5.4 11.2h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+ bash:'<svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M4.6 6.4l2 1.8-2 1.8M8.4 10h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+ edit:'<svg viewBox="0 0 16 16" fill="none"><path d="M11 2.8l2.2 2.2L6 12.2l-3 .8.8-3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+ check:'<svg viewBox="0 0 16 16" fill="none"><path d="M3.4 8.4l3 3 6.2-6.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+ route:'<svg viewBox="0 0 16 16" fill="none"><path d="M2.5 8h7M7 4.8L10.2 8 7 11.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="8" r="1.6" fill="currentColor"/></svg>',
+ lock:'<svg viewBox="0 0 16 16" fill="none"><rect x="3.4" y="7" width="9.2" height="6.4" rx="1.8" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 7V5.4a2.6 2.6 0 015.2 0V7" stroke="currentColor" stroke-width="1.5"/></svg>',
+  plan:'<svg viewBox="0 0 16 16" fill="none"><path d="M4 4.4h8M4 8h8M4 11.6h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="2.4" cy="4.4" r="1" fill="currentColor"/><circle cx="2.4" cy="8" r="1" fill="currentColor"/><circle cx="2.4" cy="11.6" r="1" fill="currentColor"/></svg>',
+ chat:'<svg viewBox="0 0 16 16"><path d="M8 2.4c-3.2 0-5.8 2.2-5.8 4.9 0 1.6.9 3 2.3 3.9l-.4 2.4 2.6-1.5c.4.1.9.1 1.3.1 3.2 0 5.8-2.2 5.8-4.9S11.2 2.4 8 2.4z" fill="currentColor"/></svg>'
+};
+const STATE={
+ idle:{c:'#E6E9EE',eye:'pill',badge:null,motion:null},
+ listening:{c:'#3B9EFF',eye:'pill',badge:null,motion:'breathe'},
+ working:{c:'#3B9EFF',eye:'pill',badge:['dots','#3B9EFF'],motion:'work'},
+ thinking:{c:'#8B5CF6',eye:'pill',badge:['dots','#8B5CF6'],motion:'work'},
+ approval:{c:'#F5A524',eye:'wide',badge:['bang','#F5A524'],motion:'bounce'},
+ question:{c:'#22D3EE',eye:'pill',badge:['q','#22D3EE'],motion:'tilt'},
+ finished:{c:'#34D399',eye:'happy',badge:['dot','#34D399'],motion:null},
+ error:{c:'#F4505E',eye:'flat',badge:['dot','#F4505E'],motion:'shake'},
+ sleeping:{c:'#94A3B8',eye:'closed',badge:null,motion:'sleep'}
+};
+function hopPose(e){const K=[[0,1,1],[.25,1.25,.72],[.5,.88,1.15],[.75,1.06,.94],[1,1,1]];for(let i=0;i<K.length-1;i++){if(e<=K[i+1][0]){const u=(e-K[i][0])/(K[i+1][0]-K[i][0]);const eu=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;return[lerp(K[i][1],K[i+1][1],eu),lerp(K[i][2],K[i+1][2],eu)];}}return[1,1];}
+class Mochi{
+  constructor(cv,opt={}){this.cv=cv;this.mini=!!opt.mini;this.body=opt.color?hexRgb(opt.color):null;this.x=cv.getContext('2d');this.s={yaw:0,pitch:0,tilt:0,open:1,sx:1,sy:1,oy:0,ox:0,badgeS:0,blush:.35,roll:0};this.tg={...this.s};this.col=[230,233,238];this.colT=[230,233,238];this.cfg=STATE.idle;this.badge=null;this.badgeCol='#fff';this.hat=false;this.t0=performance.now();this.last=this.t0;this.blinkAt=this.t0+1600;this.openT=1;this.hopT=0;this.rollT=0;const dpr=Math.min(2,devicePixelRatio||1);const px=this.mini?76:230;cv.width=px*dpr;cv.height=px*dpr;}
+  setBody(c){this.body=hexRgb(c);}
+  setHat(v){this.hat=!!v;}
+  setState(n){if(!STATE[n])return;this.cfg=STATE[n];this.colT=hexRgb(this.cfg.c);this.badge=this.cfg.badge?this.cfg.badge[0]:null;this.badgeCol=this.cfg.badge?this.cfg.badge[1]:'#fff';if(n==='finished')this.rollT=performance.now();}
+  hop(){this.hopT=performance.now();}
+  update(now){const dt=Math.min(.05,(now-this.last)/1000);this.last=now;const t=(now-this.t0)/1000,c=this.cfg;
+    this.tg.tilt=0;this.tg.oy=0;this.tg.sx=1;this.tg.sy=1;this.tg.ox=0;
+    if(c.motion==='breathe'){this.tg.sy=1+Math.sin(t*1.6)*.055;this.tg.sx=1-Math.sin(t*1.6)*.03;}
+    else if(c.motion==='work'){this.tg.tilt=Math.sin(t*1.7)*.055;this.tg.oy=-Math.abs(Math.sin(t*2.3))*.035;}
+    else if(c.motion==='bounce'){this.tg.oy=-Math.abs(Math.sin(t*3.6))*.06;this.tg.tilt=Math.sin(t*2)*.045;}
+    else if(c.motion==='tilt'){this.tg.tilt=.17;}
+    else if(c.motion==='sleep'){this.tg.sy=1+Math.sin(t*1.1)*.03;}
+    else if(c.motion==='shake'){this.tg.ox=Math.sin(t*30)*.04;}
+    if(now>this.blinkAt){this.openT=0;setTimeout(()=>this.openT=1,90);this.blinkAt=now+2200+Math.random()*3200;}
+    const k=1-Math.pow(.0015,dt);for(const p in this.tg){if(p==='ox'||p==='oy')this.s[p]+=(this.tg[p]-this.s[p])*(1-Math.pow(.0006,dt));else this.s[p]+=(this.tg[p]-this.s[p])*k;}
+    this.s.open+=(this.openT-this.s.open)*(1-Math.pow(.0001,dt));
+    this.tg.badgeS=this.badge?1:0;this.s.badgeS+=(this.tg.badgeS-this.s.badgeS)*(1-Math.pow(.004,dt));
+    if(this.hopT){const e=(now-this.hopT)/900;if(e>=1)this.hopT=0;else{const[hx,hy]=hopPose(e);this.s.sx=hx;this.s.sy=hy;this.s.oy=-Math.sin(e*Math.PI)*.1;}}
+    if(this.rollT){const e=(now-this.rollT)/950;if(e>=1){this.rollT=0;this.s.roll=0;}else this.s.roll=Math.PI*2*e;}
+    this.col=mix(this.col,this.colT,1-Math.pow(.002,dt));}
+  eye(x,shape,w,h,open,sd){switch(shape){
+    case 'pill':{const hh=Math.max(h*open,w*.3);rr(x,-w/2,-hh/2,w,hh,Math.min(w/2,hh/2));x.fill();break;}
+    case 'wide':{const hh=Math.max(h*open*1.1,w*.3);rr(x,-w*.58,-hh/2,w*1.16,hh,Math.min(w/2,hh/2));x.fill();break;}
+    case 'flat':rr(x,-w*.72,-w*.2,w*1.44,w*.4,w*.2);x.fill();break;
+    case 'happy':x.lineWidth=w*.5;x.lineCap='round';x.beginPath();x.arc(0,h*.18,w*.82,Math.PI*1.12,Math.PI*1.88);x.stroke();break;
+    case 'closed':x.lineWidth=w*.36;x.lineCap='round';x.beginPath();x.arc(0,-h*.08,w*.78,Math.PI*.15,Math.PI*.85);x.stroke();break;
+    default:rr(x,-w/2,-h/2,w,h,w/2);x.fill();}}
+  draw(){const x=this.x,W=this.cv.width,H=this.cv.height,s=this.s;x.clearRect(0,0,W,H);
+    const R=W*.3,rx=R*1.14,ry=R*.88,cx=W/2+s.ox*R,cy=H/2+s.oy*R+R*.06;
+    x.save();x.translate(cx,cy);x.rotate(s.tilt+s.roll);x.scale(s.sx,s.sy);
+    const path=supPath(rx,ry);
+    let c0,c1;
+    if(this.body){c0=mix(this.body,[255,255,255],.34);c1=mix(this.body,[0,0,0],.16);}
+    else{c0=hexRgb('#FFFAF5');c1=hexRgb('#DDCCBF');}
+    const g=x.createLinearGradient(rx*.7,-ry*.85,-rx*.8,ry*.9);g.addColorStop(0,rgba(c0,1));g.addColorStop(1,rgba(c1,1));x.fillStyle=g;x.fill(path);
+    const sh=x.createRadialGradient(rx*.25,-ry*.32,R*.15,0,0,R*1.25);sh.addColorStop(0,'rgba(255,255,255,0)');sh.addColorStop(.6,'rgba(0,0,0,0)');sh.addColorStop(1,'rgba(0,0,0,.2)');x.fillStyle=sh;x.fill(path);
+    const hl=x.createRadialGradient(rx*.34,-ry*.46,0,rx*.34,-ry*.46,R*.42);hl.addColorStop(0,'rgba(255,255,255,.5)');hl.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=hl;x.fill(path);
+    x.save();x.clip(path);const yo=Math.sin(s.yaw)*rx*.8;x.fillStyle=`rgba(255,120,150,${.42*s.blush})`;for(const sd of[-1,1]){x.beginPath();x.ellipse(sd*rx*.55+yo,ry*.2,R*.17,R*.1,0,0,7);x.fill();}
+    x.fillStyle='#1A1412';x.strokeStyle='#1A1412';
+    for(const sd of[-1,1]){const yaw=sd*.37+s.yaw;let pitch=-.12+s.pitch+s.roll;pitch=((pitch+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;const cp=Math.cos(pitch);if(Math.cos(yaw)*cp<.04)continue;const px=Math.sin(yaw)*cp*rx,py=-Math.sin(pitch)*ry;const fx=Math.max(.18,Math.cos(yaw)),fy=Math.max(.18,cp);x.save();x.translate(px,py);x.scale(fx,fy);this.eye(x,this.cfg.eye,R*.25,R*.27,s.open,sd);x.restore();}
+    x.restore();
+    if(this.hat){x.fillStyle='#5B21B6';x.beginPath();x.moveTo(-rx*.98,-ry*.72);x.lineTo(0,-ry*2.05);x.lineTo(rx*.98,-ry*.72);x.closePath();x.fill();x.fillStyle='#F59E0B';x.fillRect(-rx*.98,-ry*.86,rx*1.96,ry*.22);x.fillStyle='#FBBF24';x.fillRect(-rx*.13,-ry*1.5,rx*.26,ry*.34);}
+    x.restore();
+    if(this.badge&&s.badgeS>.02){const bs=s.badgeS,bx=cx-rx*.74*s.sx,by=cy-ry*.72*s.sy;x.save();x.translate(bx,by);x.scale(bs,bs);
+      if(this.badge==='dots'){const w=R*.74,h=R*.42;x.fillStyle='#000';rr(x,-w/2-R*.07,-h/2-R*.07,w+R*.14,h+R*.14,(h+R*.14)/2);x.fill();x.fillStyle=this.badgeCol;rr(x,-w/2,-h/2,w,h,h/2);x.fill();
+        const tt=performance.now()/1000;for(let i=0;i<3;i++){const ph=((tt*2.4-i*.22)%1+1)%1;const r=R*.06*(1+.4*Math.max(0,Math.sin(ph*Math.PI*2)));x.fillStyle='rgba(255,255,255,.95)';x.beginPath();x.arc((i-1)*R*.19,0,r,0,7);x.fill();}}
+      else if(this.badge==='bang'||this.badge==='q'){x.fillStyle='#000';x.beginPath();x.arc(0,0,R*.3,0,7);x.fill();x.fillStyle=this.badgeCol;x.beginPath();x.arc(0,0,R*.23,0,7);x.fill();x.fillStyle='#fff';x.font=`800 ${R*.32}px -apple-system,system-ui,sans-serif`;x.textAlign='center';x.textBaseline='middle';x.fillText(this.badge==='bang'?'!':'?',0,R*.02);}
+      else{x.fillStyle='#000';x.beginPath();x.arc(0,0,R*.2,0,7);x.fill();x.fillStyle=this.badgeCol;x.beginPath();x.arc(0,0,R*.135,0,7);x.fill();}
+      x.restore();}}
+}
+
+/* ---------- data ---------- */
+const WS=[
+ {id:'main',name:'Main',color:'#F5F6F8',tool:'orchestrator',cwd:null},
+ {id:'coucou',name:'coucou-app',color:'#EC4899',tool:'OpenCode',cwd:'~/code/coucou-app'},
+ {id:'louis',name:'louisraille.fr',color:'#38BDF8',tool:'OpenCode',cwd:'~/code/louisraille.fr'},
+ {id:'korus',name:'korus',color:'#FF5A4E',tool:'OpenCode',cwd:'~/code/korus-api'}
+];
+const SEED=['fix login hang','add request timeout','dark mode pass','onboarding copy','logout 401','rate-limit retry','empty state art','push notifs','widget sizing','share sheet','sso redirect','billing grace'];
+const TASKS={
+ coucou:['read LoginView.swift','bash npm test','edit LoginView.swift:42','tests pass'],
+ louis:['read index.html','edit hero.css','build site'],
+ korus:['read routes.ts','bash curl /invoices','edit invoice.ts']
+};
+const SUGGEST={main:'in coucou-app, fix the login button hang',coucou:'open a PR for the signIn fix',louis:'rebuild the hero and re-run Lighthouse',korus:'summarize why the invoice build failed'};
+WS.forEach(w=>{if(w.id==='main')return;w.sessions=SEED.slice(0,w.id==='coucou'?12:4).map((t,i)=>({title:t,age:i+'h',busy:i===0&&w.id==='coucou'}));w.active=0;w.busy=false;w.tasks=TASKS[w.id]||['idle'];});
+const LH=13;
+const IDLE=['read LoginView.swift','bash npm test','edit LoginView.swift:42','tests pass'];
+const ASK=['bash npm test','Allow edit LoginView.swift:42?','tests pass, then commit'];
+const DONE=['bash npm test','edit LoginView.swift:42','tests pass — login hang fixed'];
+const QUIET=['nothing to watch yet'];
+const SUMMARY='Fixed — missing await on signIn(), LoginView.swift:42. Tests pass.';
+const ASKHTML='<div class="si">'+IC.lock+'</div><div class="txt"><b>Allow edit LoginView.swift:42?</b><small>say “yes” · “no” · “show diff”</small></div><div class="acts"><button class="abtn y">✓ yes</button><button class="abtn n">no</button></div>';
+
+function tickIcon(t){if(t.startsWith('bash'))return'bash';if(t.startsWith('edit'))return'edit';if(t.startsWith('tests')||t.startsWith('build'))return'check';if(t.startsWith('Allow'))return'lock';if(t.startsWith('nothing'))return'clock';if(t.startsWith('jev')||t.startsWith('routing')||t.startsWith('reading your'))return'route';return'read';}
+function cur(H){return WS.find(w=>w.id===H.focus);}
+
+/* ---------- one harness per capture ---------- */
+const STAGES=[];
+function mk(root,opt){
+ const H={root:root,focus:opt.focus||'coucou',surface:opt.surface||'home',roster:opt.roster!==false,name:opt.name||'',live:!!opt.live,switching:false,run:false,decided:false,beat:null};
+ H.left=root.querySelector('.card.left');H.bwrap=root.querySelector('.bwrap');
+ H.halo=H.bwrap.querySelector('.halo');H.mo=new Mochi(H.bwrap.querySelector('canvas'));
+ H.minis={};
+ H.adot=root.querySelector('.adot');H.aname=root.querySelector('.aline b');
+ H.atool=root.querySelector('.aline .tool');H.acnt=root.querySelector('.aline .cnt');
+ H.slot=root.querySelector('.slot');H.tk=root.querySelector('.tk-in');
+ H.sum=root.querySelector('.summary');H.sumName=root.querySelector('.summary .shead b');
+ H.sumWhen=root.querySelector('.summary .swhen');H.sumText=root.querySelector('.summary .stext');
+ H.vbar=root.querySelector('.vbar');H.cap=root.querySelector('.vbar .cap span');
+ H.capYou=root.querySelector('.vbar .cap small');H.typeIn=root.querySelector('.typein');
+ H.riser=root.querySelector('.riser');H.pills=root.querySelector('.pills');
+ H.rfoot=root.querySelector('.rfoot');H.rfootTxt=root.querySelector('.rfoot span:last-child');
+ H.hlist=root.querySelector('.hlist');H.hdot=root.querySelector('.rfoot .d');
+ H.mic=root.querySelector('.mic');
+ root.querySelector('.tab[data-tab="home"]').innerHTML=IC.home;
+ root.querySelector('.tab[data-tab="chat"]').innerHTML=IC.chat;
+ root.querySelector('.tab[data-tab="mute"]').innerHTML=IC.sound;
+ root.querySelector('.sbtn[data-icon="clock"]').innerHTML=IC.clock;
+ root.querySelector('.exp').innerHTML=IC.exp;
+ H.mic.innerHTML=IC.mic;
+ root.querySelector('.tab[data-tab="home"]').classList.toggle('on',H.surface==='home');
+ root.querySelector('.tab[data-tab="chat"]').classList.toggle('on',H.surface==='chat');
+ return H;
+}
+$$('.island').forEach(root=>{STAGES.push(mk(root,{
+ name:root.dataset.stage,
+ surface:root.dataset.surface||'home',
+ focus:root.dataset.focus||'coucou',
+ roster:root.dataset.roster!=='empty',
+ live:!!root.dataset.live
+}));});
+function setState(H,st){H.mo.setState(st);const c=STATE[st];
+ H.bwrap.classList.toggle('working',st==='working'||st==='thinking');
+ H.bwrap.classList.toggle('listening',st==='listening');
+ H.halo.style.setProperty('--hc',c.c);
+ H.bwrap.style.setProperty('--rc',cur(H).color);}
+function say(H,text,you){H.cap.innerHTML=text;if(you!==undefined)H.capYou.textContent=you;}
+function sayStatus(H,text){H.cap.textContent=text;H.capYou.textContent=cur(H).name+' · voice';}
+function sayUser(H,text,kind){H.cap.textContent=text;H.capYou.textContent='YOU ('+kind+')';}
+function setLive(H,on){H.vbar.classList.toggle('live',on);H.mic.classList.toggle('live',on);}
+function clearDone(H){H.slot.classList.remove('done');}
+function showSummary(H,name,text){H.slot.classList.add('done');H.sumName.textContent=name;H.sumText.textContent=text;H.sumWhen.textContent='just now';}
+function finish(H,name,text){showSummary(H,name,text);setState(H,'finished');H.halo.style.setProperty('--hc',cur(H).color);H.mo.hop();sayStatus(H,'Done');}
+function paintAgent(H){const w=cur(H);
+ H.adot.style.setProperty('--ac',w.color);H.aname.textContent=w.name;H.atool.textContent=w.tool;
+ H.acnt.textContent=w.id==='main'?'✦':(w.active+1+'/'+w.sessions.length);
+ H.sum.style.setProperty('--ac',w.color);
+ H.left.style.setProperty('--wash',wash(w.color));
+ H.vbar.style.setProperty('--ac',w.color);
+ H.capYou.textContent=w.name+' · voice';}
+function renderTicker(H,lines,ci){const w=cur(H);
+ const list=lines||(w.id==='main'?['reading your intent','routing to a workspace']:(w.tasks||['working']));
+ const c=ci==null?list.length-1:ci;H.tk.innerHTML='';
+ list.forEach((t,i)=>{const d=document.createElement('div');d.className='ln'+(i===c?' cur':'');
+  d.innerHTML=IC[tickIcon(t)]+'<span class="txt">'+t+'</span>';H.tk.appendChild(d);});
+ H.tk.style.transform='translateY('+(-(Math.max(0,c)*LH+LH/2))+'px)';}
+function updateFoot(H){
+ if(!H.roster){H.hdot.style.background='#3a3d43';H.hdot.style.boxShadow='none';H.rfootTxt.textContent='no agents yet · add one to give it a folder';return;}
+ const n=WS.filter(w=>w.id!=='main'&&w.busy).length;
+ H.hdot.style.background=n?'#3B9EFF':'#3a3d43';
+ H.hdot.style.boxShadow=n?'0 0 8px #3B9EFF':'none';
+ H.rfootTxt.textContent=n?(n+' agent'+(n>1?'s':'')+' running · tap a Mochi to make it the main'):'all agents idle · tap a Mochi to make it the main';}
+function renderPills(H){H.pills.innerHTML='';H.minis={};
+ if(H.roster){WS.filter(w=>w.id!=='main').forEach(w=>{
+  const b=document.createElement('button');
+  b.className='pill'+(H.focus===w.id?' focused':'')+(w.busy?' working':'');
+  b.style.setProperty('--c',w.color);b.style.setProperty('--pc',light(w.color,.25));
+  b.style.setProperty('--bgc',tintBg(w.color));b.style.setProperty('--bd',tintBd(w.color));
+  b.innerHTML='<span class="pmc"><span class="pring"></span><canvas></canvas></span><span class="pn">'+w.name+'</span><span class="pst">'+(w.busy?'working':'idle')+'</span>';
+  b.onclick=()=>focusTo(H,w.id,true);
+  H.pills.appendChild(b);
+  const m=new Mochi(b.querySelector('canvas'),{mini:true,color:w.color});
+  m.setState(w.busy?'working':'idle');H.minis[w.id]={mo:m,el:b};});}
+ const a=document.createElement('button');a.className='pill add';
+ a.innerHTML='<span class="pmc">+</span><span class="pn">Add workspace</span>';
+ a.onclick=()=>{if(!H.roster){H.roster=true;renderPills(H);}else{sayStatus(H,'Add workspace — pick a folder to give it a home');}};
+ H.pills.appendChild(a);
+ updateFoot(H);}
+function renderThreads(H){const w=cur(H);H.hlist.innerHTML='';
+ (w.sessions||[]).forEach((s,i)=>{
+  const d=document.createElement('div');
+  d.className='hitem'+(i===w.active?' on':'');
+  d.style.setProperty('--sc',w.color);
+  d.innerHTML='<span class="hdot'+(s.busy?' busy':'')+'"></span><span>'+s.title+'</span><span class="rew">'+(s.busy?'working':'↩ rewind')+'</span><span class="t">'+s.age+'</span>';
+  d.onclick=()=>{w.active=i;paintAgent(H);renderThreads(H);setState(H,'working');H.mo.hop();
+   sayStatus(H,'Rewound to “'+s.title+'”');
+   setTimeout(()=>{setState(H,'listening');sayStatus(H,'Listening… ask anything');},1400);};
+  H.hlist.appendChild(d);});}
+function showRiser(H,cls,html){H.riser.className='riser '+cls;H.riser.innerHTML=html;H.left.classList.add('riser-on');
+ requestAnimationFrame(()=>H.riser.classList.add('show'));}
+function hideRiser(H){H.riser.classList.remove('show');H.left.classList.remove('riser-on');}
+function ask(H){showRiser(H,'',ASKHTML);H.riser.querySelector('.abtn.y').onclick=()=>approve(H);H.riser.querySelector('.abtn.n').onclick=()=>deny(H);}
+function detachRiser(H){H.riser.querySelectorAll('.abtn').forEach(b=>{b.onclick=null;});}
+async function focusTo(H,id,manual){
+ if(id===H.focus||H.switching||!WS.find(w=>w.id===id))return;H.switching=true;
+ const to=WS.find(w=>w.id===id);
+ H.left.style.opacity='0';H.left.style.filter='blur(8px)';H.left.style.transform='scale(.97)';
+ H.left.style.transition='opacity .32s,filter .32s,transform .32s';
+ await sleep(300);
+ H.focus=id;H.typeIn.value='';clearDone(H);H.vbar.classList.remove('typing');
+ if(id!=='main')H.mo.setBody(to.color);
+ paintAgent(H);renderPills(H);renderTicker(H);if(H.surface==='chat')renderThreads(H);
+ H.left.style.opacity='1';H.left.style.filter='blur(0)';H.left.style.transform='none';
+ H.mo.hop();setState(H,'working');
+ await sleep(800);H.switching=false;
+ if(manual){setState(H,'listening');sayStatus(H,'Listening… say or type to '+to.name);}}
+
+/* ---------- the beats ---------- */
+function approve(H){H.decided=true;if(H.beat)return H.beat;
+ detachRiser(H);hideRiser(H);setState(H,'working');sayStatus(H,'Working…');
+ H.beat=(async()=>{
+  await sleep(500);renderTicker(H,DONE,2);
+  await sleep(900);
+  const w=WS.find(x=>x.id==='coucou');w.busy=false;renderPills(H);
+  setState(H,'finished');H.halo.style.setProperty('--hc',w.color);H.mo.hop();
+  sayStatus(H,'Done — the login hang is fixed.');
+  await sleep(1200);
+  finish(H,'coucou-app',SUMMARY);})();
+ return H.beat;}
+function deny(H){H.decided=true;detachRiser(H);hideRiser(H);setState(H,'listening');setLive(H,true);
+ sayStatus(H,'Skipped — say or type what instead');setTimeout(()=>setLive(H,false),1200);}
+
+function build(H,name){
+ H.name=name;H.decided=false;H.beat=null;H.switching=false;
+ hideRiser(H);detachRiser(H);H.riser.innerHTML='';
+ H.vbar.classList.remove('typing','live','has-suggest');
+ clearDone(H);H.typeIn.value='';
+ WS.forEach(w=>{if(w.id!=='main')w.busy=false;});
+ if(name==='caught-up'){
+  H.focus='coucou';H.roster=true;H.mo.setBody('#EC4899');
+  paintAgent(H);renderPills(H);renderTicker(H,IDLE,3);
+  showSummary(H,'coucou-app',SUMMARY);
+  setState(H,'listening');sayStatus(H,'Nothing needs you.');
+ }else if(name==='needs-you'){
+  H.focus='coucou';H.roster=true;H.mo.setBody('#EC4899');WS.find(w=>w.id==='coucou').busy=true;
+  paintAgent(H);renderPills(H);renderTicker(H,ASK,1);
+  setState(H,'approval');H.mo.hop();ask(H);
+  sayStatus(H,'Waiting for your okay…');
+ }else if(name==='after-yes'){
+  H.focus='coucou';H.roster=true;H.mo.setBody('#EC4899');
+  paintAgent(H);renderPills(H);renderTicker(H,DONE,2);
+  setState(H,'finished');H.halo.style.setProperty('--hc','#EC4899');H.mo.hop();
+  sayStatus(H,'Done — the login hang is fixed.');
+ }else if(name==='first-run'){
+  H.focus='main';H.roster=false;
+  paintAgent(H);renderPills(H);renderTicker(H,QUIET,0);
+  setState(H,'idle');sayStatus(H,'Add a workspace to get started.');
+ }else if(name==='chat'){
+  H.focus='coucou';H.roster=true;H.mo.setBody('#EC4899');
+  paintAgent(H);renderTicker(H,IDLE,2);updateFoot(H);
+  setState(H,'listening');
+  H.vbar.classList.add('typing','has-suggest');
+  H.typeIn.placeholder=SUGGEST.coucou;
+  setLive(H,true);
+  sayStatus(H,'Listening — ask anything.');
+  renderThreads(H);}}
+
+/* ---------- the tour, on the live capture only ---------- */
+let LIVE=null;
+async function tour(){
+ const H=LIVE;if(!H||H.run)return;H.run=true;
+ build(H,'caught-up');
+ WS.forEach(w=>{if(w.id!=='main')w.busy=false;});
+ renderPills(H);renderTicker(H,IDLE,0);clearDone(H);
+ setState(H,'listening');setLive(H,true);sayStatus(H,'Listening…');
+ await sleep(1500);
+ setLive(H,false);setState(H,'working');sayUser(H,'“in coucou-app the login button hangs”','voice');
+ await sleep(1200);
+ setState(H,'thinking');renderTicker(H,['reading your intent','jev: coucou-app 0.97','routing to the folder owner'],2);
+ sayStatus(H,'jev · coucou-app 0.97 → routing');
+ await sleep(1300);
+ const w=WS.find(x=>x.id==='coucou');w.busy=true;renderPills(H);
+ setState(H,'working');renderTicker(H,IDLE,0);sayStatus(H,'Working…');
+ await sleep(1300);
+ renderTicker(H,IDLE,1);
+ await sleep(1300);
+ renderTicker(H,IDLE,2);
+ await sleep(1400);
+ setState(H,'approval');H.mo.hop();renderTicker(H,ASK,1);sayStatus(H,'Waiting for your okay…');
+ ask(H);
+ const t0=performance.now();
+ while(!H.decided&&performance.now()-t0<2800)await sleep(120);
+ await approve(H);
+ await sleep(900);
+ setState(H,'listening');sayStatus(H,'Listening… ask anything');H.run=false;}
+
+/* ---------- wires ---------- */
+STAGES.forEach(H=>build(H,H.name));
+LIVE=STAGES.find(H=>H.live)||STAGES[0];
+const CH=STAGES.find(H=>H.surface==='chat');
+/* the four frozen frames stay alive: each one replays its own beat */
+STAGES.forEach(H=>{
+ if(H===LIVE)return;
+ if(H.name==='needs-you')setInterval(()=>{if(H.run)return;hideRiser(H);setTimeout(()=>{if(!H.riser.classList.contains('show'))ask(H);},1100);},8000);
+ if(H.name==='after-yes')setInterval(async()=>{renderTicker(H,DONE,1);await sleep(900);renderTicker(H,DONE,2);setState(H,'finished');H.halo.style.setProperty('--hc','#EC4899');H.mo.hop();},7000);
+});
+$('#play').onclick=()=>tour();
+$('#bAppr').onclick=()=>{LIVE.run=false;build(LIVE,'needs-you');};
+$('#bDone').onclick=async()=>{LIVE.run=false;build(LIVE,'caught-up');clearDone(LIVE);setState(LIVE,'working');
+ renderTicker(LIVE,DONE,1);sayStatus(LIVE,'Working…');
+ await sleep(700);renderTicker(LIVE,DONE,2);await sleep(700);finish(LIVE,'coucou-app',SUMMARY);
+ await sleep(1400);setState(LIVE,'listening');sayStatus(LIVE,'Listening… ask anything');};
+$('#bEmpty').onclick=()=>{LIVE.run=false;build(LIVE,'first-run');};
+$('#bChat').onclick=()=>{if(CH){build(CH,'chat');CH.root.scrollIntoView({behavior:'smooth',block:'center'});}};
+$('#bReset').onclick=()=>{LIVE.run=false;STAGES.forEach(H=>build(H,H.name));};
+document.addEventListener('click',e=>{
+ const el=e.target;const t=el&&el.closest?el.closest('.tab'):null;if(!t)return;
+ if(t.dataset.tab==='chat'&&CH){CH.root.scrollIntoView({behavior:'smooth',block:'center'});}
+ if(t.dataset.tab==='home'){LIVE.root.scrollIntoView({behavior:'smooth',block:'center'});}});
+
+/* ---------- loop ---------- */
+function frame(now){for(const H of STAGES){H.mo.update(now);H.mo.draw();for(const k in H.minis){H.minis[k].mo.update(now);H.minis[k].mo.draw();}}requestAnimationFrame(frame);}
+requestAnimationFrame(frame);
+if(/[?&]done\b/.test(location.search)){LIVE.run=false;build(LIVE,'caught-up');}
+else if(/[?&]type\b/.test(location.search)){if(CH){build(CH,'chat');CH.typeIn.focus();CH.root.scrollIntoView({block:'center'});}}
+else{setTimeout(tour,700);}
+</script>
+</body>
+</html>

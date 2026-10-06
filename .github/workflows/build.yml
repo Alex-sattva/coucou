@@ -45,6 +45,12 @@ jobs:
       - name: Wardrobe tests
         run: bash scripts/test-wardrobe.sh
 
+      - name: Workspace routing tests
+        run: bash scripts/test-workspace-routing.sh
+
+      - name: Thread store tests
+        run: bash scripts/test-thread-store.sh
+
       - name: Build
         run: |
           xcodebuild \

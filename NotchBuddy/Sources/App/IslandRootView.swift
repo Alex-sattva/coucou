@@ -52,6 +52,11 @@ struct IslandContainer: View {
 
         let greetingActive = state.mode == .expanded && state.view == .greeting
 
+        // The harness draws its own Mochi inside its agent card, so on its surfaces the
+        // shared bot stands down rather than stacking a second one on top of it.
+        let botHidden = uploadActive || greetingActive
+            || (state.mode == .expanded && state.view.isHarnessSurface)
+
         return ZStack(alignment: .topLeading) {
             // Black island shape
             IslandShape(width: islandWidth, height: islandHeight,
@@ -93,7 +98,10 @@ struct IslandContainer: View {
 
             // Single BotPlacement — always alive in the view tree so spring animations
             // fire from the current position (e.g. choose at 60,101) when canvas deactivates.
-            // Hidden during upload canvas or greeting (both draw their own Mochi).
+            // Hidden during upload canvas or greeting (both draw their own Mochi), and on the
+            // harness surfaces (expanded overview/approval): the harness draws its own Mochi
+            // inside its agent card, so the shared 58 pt home bot would be painted over it.
+            // Compact mode still shows it — that resting Mochi is unchanged.
             BotPlacement(state: state, islandW: islandWidth, islandH: islandHeight)
                 // Keep idle animations inside the resting strip. Expanded views
                 // retain the panel's full height for particles and hands.
@@ -101,8 +109,8 @@ struct IslandContainer: View {
                     Rectangle().frame(width: islandWidth,
                                       height: state.mode == .expanded ? 320 : islandHeight)
                 }
-                .opacity(uploadActive || greetingActive ? 0 : 1)
-                .animation(.easeInOut(duration: 0.25), value: uploadActive || greetingActive)
+                .opacity(botHidden ? 0 : 1)
+                .animation(.easeInOut(duration: 0.25), value: botHidden)
 
             CountdownBar(state: state, islandW: islandWidth)
 

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coucou — thread pile-up variations</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#0B0C0E;--card:#141518;--line:rgba(255,255,255,.07);--ink:#F5F6F8;--mut:#8E939C;--dim:#6B7079;
+--coucou:#EC4899;--spr:cubic-bezier(.32,1.22,.42,1);--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif}
+body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#1a2030,#0B0C0E 60%) fixed,#0B0C0E;color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased;padding:36px 20px 80px;display:flex;flex-direction:column;align-items:center}
+h1{font-size:22px;margin:0;letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:13.5px;margin:8px 0 26px;max-width:780px;text-align:center;line-height:1.55}
+.sub b{color:var(--ink)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:1060px;max-width:96vw}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.var{background:#000;border-radius:22px;padding:12px;box-shadow:0 30px 80px -20px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08)}
+.var h2{font-size:14px;margin:4px 6px 2px;display:flex;align-items:center;gap:8px}
+.var h2 .tag{font-size:10.5px;font-weight:700;background:rgba(255,255,255,.1);padding:2px 8px;border-radius:999px;color:#C9CCD2}
+.var p{font-size:12px;color:var(--dim);margin:2px 6px 10px;line-height:1.5}
+.var p b{color:#C9CCD2}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;position:relative;min-height:300px;display:flex;flex-direction:column}
+.head{display:flex;align-items:center;gap:9px;padding:12px 14px 6px}
+.mdot{width:44px;height:36px;flex:none;border-radius:50%;background:var(--coucou);display:grid;place-items:center;font-size:18px;box-shadow:0 0 18px -4px var(--coucou)}
+.aname{font-weight:700;font-size:14px}
+.asub{font-size:11px;color:var(--mut)}
+.crumbs{font-size:11px;color:var(--dim);padding:0 14px;display:flex;gap:6px;align-items:center}
+.crumbs b{color:#C9CCD2}
+.thread{flex:1;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+.bub{max-width:92%;padding:8px 11px;border-radius:13px;font-size:13px;line-height:1.45;background:rgba(255,255,255,.06);border:1px solid var(--line);align-self:flex-start;animation:pop .35s var(--spr)}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.98)}}
+/* V1 scroll strip */
+.sessbar{display:flex;gap:6px;padding:8px 14px 0;overflow-x:auto;scrollbar-width:none;mask-image:linear-gradient(90deg,#000 90%,transparent)}
+.sessbar::-webkit-scrollbar{display:none}
+.sess{flex:none;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#C9CCD2;border-radius:999px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all .25s var(--spr)}
+.sess.on{border-color:var(--coucou);color:#fff;box-shadow:0 0 0 1px var(--coucou)}
+.sess.new{border-style:dashed;color:#9AA0A8;background:transparent}
+/* V2 dropdown */
+.ddwrap{position:relative;padding:8px 14px 0}
+.ddbtn{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(236,72,153,.4);background:rgba(236,72,153,.1);color:#fff;border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer;font-family:inherit}
+.menu{position:absolute;top:40px;left:14px;right:14px;background:#1C1E22;border:1px solid var(--line);border-radius:14px;overflow:hidden;z-index:5;display:none;box-shadow:0 20px 50px rgba(0,0,0,.6);animation:pop .3s var(--spr)}
+.menu.open{display:block}
+.menu input{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);outline:none;color:#fff;font-size:12.5px;padding:9px 12px;font-family:inherit}
+.mi{display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:12.5px;cursor:pointer;color:#C9CCD2}
+.mi:hover{background:rgba(255,255,255,.06)}
+.mi.on{color:#fff;background:rgba(236,72,153,.12)}
+.mi .t{margin-left:auto;font-size:10.5px;color:var(--dim)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--coucou);flex:none}
+.dot.idle{background:#3a3d43}
+/* V3 recent + sheet */
+.recrow{display:flex;gap:6px;padding:8px 14px 0;align-items:center}
+.morebtn{flex:none;border:1px dashed rgba(255,255,255,.3);background:transparent;color:#C9CCD2;border-radius:999px;padding:3px 11px;font-size:11px;font-weight:700;cursor:pointer}
+.sheet{margin:8px 14px 0;background:#1C1E22;border:1px solid var(--line);border-radius:14px;padding:8px;display:none;animation:pop .35s var(--spr)}
+.sheet.open{display:block}
+.sheet .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sitem{border:1px solid var(--line);border-radius:10px;padding:7px 9px;font-size:11.5px;color:#C9CCD2;cursor:pointer}
+.sitem:hover{background:rgba(255,255,255,.06)}
+.sitem b{display:block;font-size:11.5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sitem span{font-size:10px;color:var(--dim)}
+/* V4 sections */
+.sec{font-size:10px;font-weight:700;letter-spacing:.07em;color:var(--dim);padding:8px 14px 0}
+.discl{margin:4px 14px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.discl button{width:100%;background:transparent;border:0;color:#C9CCD2;font-size:12px;padding:8px 12px;cursor:pointer;text-align:left;font-family:inherit}
+.oldlist{display:none;border-top:1px solid var(--line);max-height:120px;overflow-y:auto}
+.oldlist.open{display:block}
+.rec{font-size:12px;color:var(--dim);margin:26px auto 0;max-width:760px;line-height:1.6;background:#101114;border:1px solid var(--line);border-radius:14px;padding:14px 18px}
+.rec b{color:#fff}
+.inputbar{margin:8px 10px 10px;display:flex;gap:7px;background:rgba(255,255,255,.07);border-radius:13px;padding:6px 6px 6px 12px;align-items:center}
+.inputbar input{flex:1;background:transparent;border:0;outline:none;color:#fff;font-size:13px;font-family:inherit}
+.send{width:28px;height:28px;border-radius:50%;border:0;background:#F5F6F8;color:#0B0C0E;font-weight:700;cursor:pointer}
+</style>
+</head>
+<body>
+<h1>🧵 Thread pile-up — 4 variations (12 threads each)</h1>
+<p class="sub">Same workspace <b>coucou-app</b>, 12 sessions. Click around in each — they're all live. Pick the pattern that feels most island-native.</p>
+<div class="grid">
+<!-- V1 -->
+<div class="var"><h2>V1 · Scroll strip <span class="tag">smallest change</span></h2>
+<p>What you have now, fixed: <b>nowrap + fade mask</b>, active auto-scrolls into view. Zero chrome, but threads 1–4 are hidden off-screen.</p>
+<div class="card"><div class="head"><div class="mdot">🌸</div><div><div class="aname">coucou-app</div><div class="asub">Agent · ~/code/coucou-app</div></div></div>
+<div class="sessbar" id="v1bar"></div>
+<div class="thread" id="v1thread"></div>
+<div class="inputbar"><input id="v1in" placeholder="New task → spawns session 13…"><button class="send" id="v1send">↑</button></div></div></div>
+<!-- V2 -->
+<div class="var"><h2>V2 · Dropdown switcher <span class="tag">scales best</span></h2>
+<p>Header becomes a <b>picker</b>: <b>Main › coucou-app ▾ fix login hang</b>. Searchable menu, timestamps, working dot. One row forever.</p>
+<div class="card"><div class="head"><div class="mdot">🌸</div><div><div class="aname">coucou-app</div><div class="asub">Agent · ~/code/coucou-app</div></div></div>
+<div class="ddwrap"><button class="ddbtn" id="v2btn">fix login hang ▾</button>
+<div class="menu" id="v2menu"><input id="v2q" placeholder="Search threads…"><div id="v2list"></div></div></div>
+<div class="thread" id="v2thread"></div>
+<div class="inputbar"><input id="v2in" placeholder="New task → spawns session…"><button class="send" id="v2send">↑</button></div></div></div>
+<!-- V3 -->
+<div class="var"><h2>V3 · Recent + overflow <span class="tag">island vibe</span></h2>
+<p>Show <b>2 recents + "+10"</b>. Overflow opens an inline sheet grid. Recents stay one-tap, rest two-taps. My pick for the island.</p>
+<div class="card"><div class="head"><div class="mdot">🌸</div><div><div class="aname">coucou-app</div><div class="asub">Agent · ~/code/coucou-app</div></div></div>
+<div class="recrow" id="v3rec"></div>
+<div class="sheet" id="v3sheet"><div class="sgrid" id="v3grid"></div></div>
+<div class="thread" id="v3thread"></div>
+<div class="inputbar"><input id="v3in" placeholder="New task → becomes recent #1…"><button class="send" id="v3send">↑</button></div></div></div>
+<!-- V4 -->
+<div class="var"><h2>V4 · Active + archive <span class="tag">self-cleaning</span></h2>
+<p><b>2 active</b> pinned, rest auto-archived under <b>Older ▾</b>. New task bumps oldest out. Threads never pile — they age out.</p>
+<div class="card"><div class="head"><div class="mdot">🌸</div><div><div class="aname">coucou-app</div><div class="asub">Agent · ~/code/coucou-app</div></div></div>
+<div class="sec">ACTIVE</div><div class="recrow" id="v4act"></div>
+<div class="discl"><button id="v4tgl">Older · 10 ▾</button><div class="oldlist" id="v4old"></div></div>
+<div class="thread" id="v4thread"></div>
+<div class="inputbar"><input id="v4in" placeholder="New task → archives oldest…"><button class="send" id="v4send">↑</button></div></div></div>
+</div>
+<div class="rec"><b>My read:</b> V3 for the island (2 recents + overflow keeps one-row height, matches your pill language), V2's search when you pass ~20 threads. V1 hides too much, V4's auto-archive surprises. Ship <b>V3 now, add V2 search inside the overflow sheet</b> — best of both. Want me to wire that combo into the main prototype?</div>
+<script>
+const TITLES=['fix login hang','add timeout','dark mode check','onboarding copy','fix logout 401','rate-limit retry','empty state art','push notifs','widget size','share sheet','sso redirect','billing grace'];
+function mkThreads(){return TITLES.map((t,i)=>({title:t,html:`<div class="bub"><b>${t}</b> — thread ${i+1} content lives here. Full log, diffs, cwd.</div>`,busy:i===2,time:i+'h'}));}
+// V1
+let v1={ts:mkThreads(),a:0};
+function rV1(){const bar=document.getElementById('v1bar');bar.innerHTML='';v1.ts.forEach((s,i)=>{const b=document.createElement('button');b.className='sess'+(i===v1.a?' on':'');b.textContent=(i===v1.a?'● ':'')+s.title;b.onclick=()=>{v1.a=i;rV1();};bar.appendChild(b);});const n=document.createElement('button');n.className='sess new';n.textContent='+ new';n.onclick=()=>addV1('untitled '+(v1.ts.length+1));bar.appendChild(n);
+document.getElementById('v1thread').innerHTML=v1.ts[v1.a].html;
+bar.children[v1.a].scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});}
+function addV1(t){v1.ts.unshift({title:t,html:`<div class="bub"><b>${t}</b> — fresh session.</div>`,busy:false,time:'now'});v1.a=0;rV1();}
+document.getElementById('v1send').onclick=()=>{const v=document.getElementById('v1in').value.trim();if(!v)return;document.getElementById('v1in').value='';addV1(v);};
+rV1();
+// V2
+let v2={ts:mkThreads(),a:0};
+function rV2(filter){const l=document.getElementById('v2list');l.innerHTML='';v2.ts.forEach((s,i)=>{if(filter&&!s.title.includes(filter))return;const d=document.createElement('div');d.className='mi'+(i===v2.a?' on':'');d.innerHTML=`<span class="dot ${s.busy?'':'idle'}"></span><span>${i===v2.a?'✓ ':''}${s.title}</span><span class="t">${s.time} ago</span>`;d.onclick=()=>{v2.a=i;rV2();document.getElementById('v2menu').classList.remove('open');};l.appendChild(d);});
+document.getElementById('v2btn').textContent=v2.ts[v2.a].title+' ▾';
+document.getElementById('v2thread').innerHTML=v2.ts[v2.a].html;}
+document.getElementById('v2btn').onclick=()=>document.getElementById('v2menu').classList.toggle('open');
+document.getElementById('v2q').oninput=e=>rV2(e.target.value);
+document.getElementById('v2send').onclick=()=>{const v=document.getElementById('v2in').value.trim();if(!v)return;document.getElementById('v2in').value='';v2.ts.unshift({title:v,html:`<div class="bub"><b>${v}</b> — fresh session.</div>`,busy:false,time:'now'});v2.a=0;rV2();};
+rV2();
+// V3
+let v3={ts:mkThreads(),a:0,open:false};
+function rV3(){const rec=document.getElementById('v3rec');rec.innerHTML='';[0,1].forEach(k=>{const i=k;if(!v3.ts[i])return;const b=document.createElement('button');b.className='sess'+(i===v3.a?' on':'');b.textContent=(i===v3.a?'● ':'')+v3.ts[i].title;b.onclick=()=>{v3.a=i;rV3();};rec.appendChild(b);});
+const m=document.createElement('button');m.className='morebtn';m.textContent='+'+(v3.ts.length-2)+' more';m.onclick=()=>{v3.open=!v3.open;document.getElementById('v3sheet').classList.toggle('open',v3.open);};rec.appendChild(m);
+const g=document.getElementById('v3grid');g.innerHTML='';v3.ts.slice(2).forEach((s,ri)=>{const i=ri+2;const d=document.createElement('div');d.className='sitem';d.innerHTML=`<b>${s.title}</b><span>thread ${i+1} · ${s.time} ago</span>`;d.onclick=()=>{const[t]=v3.ts.splice(i,1);v3.ts.unshift(t);v3.a=0;v3.open=false;document.getElementById('v3sheet').classList.remove('open');rV3();};g.appendChild(d);});
+document.getElementById('v3thread').innerHTML=v3.ts[v3.a].html;}
+document.getElementById('v3send').onclick=()=>{const v=document.getElementById('v3in').value.trim();if(!v)return;document.getElementById('v3in').value='';v3.ts.unshift({title:v,html:`<div class="bub"><b>${v}</b> — fresh session.</div>`,busy:false,time:'now'});v3.a=0;rV3();};
+rV3();
+// V4
+let v4={ts:mkThreads(),a:0};
+function rV4(){const act=document.getElementById('v4act');act.innerHTML='';v4.ts.slice(0,2).forEach((s,i)=>{const b=document.createElement('button');b.className='sess'+(i===v4.a?' on':'');b.textContent=(i===v4.a?'● ':'')+s.title;b.onclick=()=>{v4.a=i;rV4();};act.appendChild(b);});
+const old=document.getElementById('v4old');old.innerHTML='';v4.ts.slice(2).forEach((s,ri)=>{const d=document.createElement('div');d.className='mi';d.innerHTML=`<span>${s.title}</span><span class="t">${s.time} ago · tap to restore</span>`;d.onclick=()=>{const[t]=v4.ts.splice(ri+2,1);v4.ts.unshift(t);v4.a=0;rV4();};old.appendChild(d);});
+document.getElementById('v4tgl').textContent=`Older · ${v4.ts.length-2} ▾`;
+document.getElementById('v4thread').innerHTML=v4.ts[v4.a].html;}
+document.getElementById('v4tgl').onclick=()=>document.getElementById('v4old').classList.toggle('open');
+document.getElementById('v4send').onclick=()=>{const v=document.getElementById('v4in').value.trim();if(!v)return;document.getElementById('v4in').value='';v4.ts.unshift({title:v,html:`<div class="bub"><b>${v}</b> — fresh, oldest aged out.</div>`,busy:false,time:'now'});v4.a=0;rV4();};
+rV4();
+</script>
+</body>
+</html>
