@@ -621,8 +621,10 @@ final class AppState: ObservableObject {
 
     func syncView() {
         guard mode == .expanded else { return }
-        if view == .empty && !tasks.isEmpty { view = .overview }
-        else if view == .overview && tasks.isEmpty { view = .empty }
+        // Agent sessions without a pill still have an assistant panel to show.
+        let hasContent = !tasks.isEmpty || !sessionStore.sessions.isEmpty
+        if view == .empty && hasContent { view = .overview }
+        else if view == .overview && !hasContent { view = .empty }
     }
 
     /// Load catalog pills into tasks, respecting activeIntegrations. Safe to call multiple times.

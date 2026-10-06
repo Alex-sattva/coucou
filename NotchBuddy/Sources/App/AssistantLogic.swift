@@ -145,20 +145,27 @@ extension AgentSession {
 
 /// When the assistant panel is open. Pure, so the state machine is tested without the UI.
 ///
-/// open = summoned || selectedId != nil || (queue not empty && queue signature != dismissed signature)
+/// open = summoned || selectedId != nil || (queue has a need the user has not dismissed)
+///
+/// The dismissed signature remembers WHICH needs were on the queue when the user pressed Esc.
+/// A need that is not in it (new, changed phase, asked again) reopens the panel; a need that
+/// went away (answered in the terminal, timed out) does not.
 enum AssistantOpenRules {
-    /// Changes whenever a need appears, changes phase, or is answered. Includes `attentionAt`, so
-    /// the same session asking twice gives two different signatures. Empty queue -> "".
-    static func signature(queue: [AgentSession]) -> String {
+    /// One key per need. Includes `attentionAt`, so the same session asking twice gives two keys.
+    static func keys(queue: [AgentSession]) -> [String] {
         queue.map { "\($0.id)|\($0.phase.rawValue)|\($0.attentionAt?.timeIntervalSince1970 ?? 0)" }
-            .joined(separator: ",")
+    }
+
+    /// The queue's keys joined; empty queue -> "".
+    static func signature(queue: [AgentSession]) -> String {
+        keys(queue: queue).joined(separator: ",")
     }
 
     static func isOpen(summoned: Bool, selectedId: String?, queue: [AgentSession],
                        dismissedSignature: String?) -> Bool {
         if summoned || selectedId != nil { return true }
-        guard !queue.isEmpty else { return false }
-        return signature(queue: queue) != dismissedSignature
+        let dismissed = Set((dismissedSignature ?? "").split(separator: ",").map(String.init))
+        return keys(queue: queue).contains { !dismissed.contains($0) }
     }
 }
 
@@ -191,7 +198,8 @@ enum AssistantPanelContent: Equatable, Sendable {
 
 /// Panel heights in points. The prototype (variant D) values are the starting point; the
 /// finished card grows by one file row (21 pt) per changed file, up to 3, and the question card
-/// by 34 pt per option row.
+/// by 28 pt per option row (options are a vertical list; the prototype's `rows + 120` did not
+/// leave room for the question text and the footer, so the base is 176).
 enum AssistantMetrics {
     static let bar: CGFloat = 112
     static let approval: CGFloat = 236
@@ -199,8 +207,8 @@ enum AssistantMetrics {
     static let finishedBase: CGFloat = 206
     static let fileRow: CGFloat = 21
     static let maxFileRows = 3
-    static let questionBase: CGFloat = 120
-    static let questionRow: CGFloat = 34
+    static let questionBase: CGFloat = 176
+    static let questionRow: CGFloat = 28
     static let diff: CGFloat = 300
     /// The island window is 320 pt tall.
     static let maxHeight: CGFloat = 320

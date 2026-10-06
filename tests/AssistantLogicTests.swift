@@ -219,6 +219,15 @@ enum AssistantLogicTests {
             checkTrue("the same session asking again reopens",
                       AssistantOpenRules.isOpen(summoned: false, selectedId: nil,
                                                 queue: AttentionQueue.order([ap2]), dismissedSignature: sig1))
+            let bq = sess("b", phase: .question, attention: 6)
+            let two = AttentionQueue.order([ap, bq])
+            let sigTwo = AssistantOpenRules.signature(queue: two)
+            checkTrue("a need that went away does not reopen the panel",
+                      !AssistantOpenRules.isOpen(summoned: false, selectedId: nil,
+                                                 queue: AttentionQueue.order([bq]), dismissedSignature: sigTwo))
+            checkTrue("one more need on top of the dismissed ones reopens it",
+                      AssistantOpenRules.isOpen(summoned: false, selectedId: nil,
+                                                queue: AttentionQueue.order([ap, bq, fin]), dismissedSignature: sigTwo))
             checkTrue("summoned opens with an empty queue",
                       AssistantOpenRules.isOpen(summoned: true, selectedId: nil, queue: [], dismissedSignature: nil))
             checkTrue("a clicked agent opens it",
@@ -266,7 +275,7 @@ enum AssistantLogicTests {
             checkEq("blocked 262", AssistantMetrics.height(for: .blocked), 262)
             checkEq("done with 2 files 248", AssistantMetrics.height(for: .finished(files: 2)), 248)
             checkEq("done caps at 3 file rows", AssistantMetrics.height(for: .finished(files: 9)), 269)
-            checkEq("question = rows x 34 + 120", AssistantMetrics.height(for: .question(rows: 5)), 290)
+            checkEq("question = rows x 28 + 176", AssistantMetrics.height(for: .question(rows: 5)), 316)
             checkTrue("every height fits the 320 pt window",
                       AssistantMetrics.height(for: .question(rows: 40)) <= 320)
         }

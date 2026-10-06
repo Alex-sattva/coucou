@@ -29,6 +29,15 @@ extension IslandView {
     /// island's own `BotPlacement`, which must stand down because the harness draws its own
     /// Mochi (otherwise the 58 pt home bot is painted over the harness's 26 pt card Mochi).
     var isHarnessSurface: Bool { self == .overview || self == .approval }
+
+    /// Views drawn by the assistant panel (`AssistantPanelView`): the home and the four alert cards.
+    /// The panel picks its card from the main session, not from which of these is current.
+    var isAssistantPanel: Bool {
+        switch self {
+        case .overview, .approval, .question, .error, .finished: return true
+        default: return false
+        }
+    }
 }
 
 // MARK: - Bot State
