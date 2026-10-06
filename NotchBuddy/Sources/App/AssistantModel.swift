@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -14,6 +15,24 @@ final class AssistantModel: ObservableObject {
     @Published private(set) var subOrder: [String] = []
     /// Slot that takes the previous main's colour after a hand-off lands (used by the Step 8 motion).
     @Published private(set) var recolourIndex: Int?
+
+    // MARK: Hand-off (Step 8)
+    //
+    // When `mainId` changes the plan (`HandoffPlanner`) is decided in the same `recompute` that
+    // changes `mainId` / `subOrder`, so the strip never renders a frame with the new occupant:
+    // `slotHolds` already makes the slot keep showing the old one until the dot has landed.
+
+    /// New slot occupant -> the agent that slot keeps showing until landing.
+    @Published private(set) var slotHolds: [String: String] = [:]
+    /// The flight in the air. nil when idle: the overlay (and its timeline) is not mounted.
+    @Published private(set) var flight: AssistantFlight?
+    /// Bumped at landing (or at once without a flight): the main Mochi hops.
+    @Published private(set) var hopToken = 0
+    /// Per-frame lerp rate of the main Mochi's body colour for the latest change of main.
+    @Published private(set) var colorBlendRate: Double = HandoffPlanner.quickBlendRate
+    private var handoffTask: Task<Void, Never>?
+    private var flightCounter = 0
+
     /// Set when the user clicks a small Mochi; cleared when the island leaves the expanded mode.
     @Published private(set) var selectedId: String?
     @Published private(set) var sessions: [String: AgentSession] = [:]
@@ -91,6 +110,12 @@ final class AssistantModel: ObservableObject {
     /// Small Mochis in slot order (only live sessions).
     var subs: [AgentSession] { subOrder.compactMap { sessions[$0] } }
 
+    /// What the strip draws: like `subs`, but a slot in a hand-off still shows its old occupant.
+    var displaySubs: [AgentSession] {
+        let shown = SlotDisplay.ids(order: subOrder, holds: slotHolds)
+        return zip(subOrder, shown).compactMap { sessions[$1] ?? sessions[$0] }
+    }
+
     /// A small Mochi was clicked: it takes the main spot until the island folds back.
     func select(_ id: String) {
         guard sessions[id] != nil else { return }
@@ -160,6 +185,47 @@ final class AssistantModel: ObservableObject {
 
     // MARK: - Private
 
+    /// Plays (or skips) the hand-off for a change of main agent. Called before `mainId` / `subOrder`
+    /// change, in the same synchronous pass.
+    private func beginHandoff(oldMain: String?, newMain: String?, newOrder: [String],
+                              recolourIndex: Int?, colorHex: String?) {
+        guard newMain != oldMain else { return }
+        // A hand-off in the air is cancelled: its remaining travel and burst never play, and its
+        // slot recolour applies now (the new holds below replace the old ones).
+        handoffTask?.cancel()
+        handoffTask = nil
+        guard let plan = HandoffPlanner.plan(
+            oldMain: oldMain, newMain: newMain, newOrder: newOrder, recolourIndex: recolourIndex,
+            visible: state.mode != .hidden,
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) else {
+            slotHolds = [:]
+            flight = nil
+            return
+        }
+        colorBlendRate = plan.blendRate
+        slotHolds = plan.holds
+        guard let slot = plan.fromSlot, let colorHex else {
+            flight = nil
+            if plan.hops { hopToken += 1 }
+            return
+        }
+        flightCounter += 1
+        let token = flightCounter
+        flight = AssistantFlight(token: token, fromSlot: slot, hex: colorHex,
+                                 start: Date().timeIntervalSinceReferenceDate)
+        handoffTask = Task { @MainActor [weak self] in
+            // Landing: the main Mochi hops and the slot takes the previous main.
+            try? await Task.sleep(for: .seconds(HandoffTimeline.landingDelay))
+            guard !Task.isCancelled, let self else { return }
+            self.hopToken += 1
+            self.slotHolds = [:]
+            // The burst plays out, then the overlay is unmounted.
+            try? await Task.sleep(for: .seconds(HandoffTimeline.burstDuration + 0.05))
+            guard !Task.isCancelled else { return }
+            if self.flight?.token == token { self.flight = nil }
+        }
+    }
+
     private func modeChanged(_ mode: IslandMode) {
         let expanded = mode == .expanded
         defer { wasExpanded = expanded }
@@ -177,6 +243,8 @@ final class AssistantModel: ObservableObject {
                                            contextWorkspace: contextWorkspace, previousMainId: mainId)
         let update = SubSlotOrder.update(order: subOrder, alive: list.map(\.id),
                                          oldMain: mainId, newMain: newMain)
+        beginHandoff(oldMain: mainId, newMain: newMain, newOrder: update.order,
+                     recolourIndex: update.recolourIndex, colorHex: newMain.flatMap { new[$0]?.colorHex })
         if newMain != mainId { mainId = newMain }
         if update.order != subOrder { subOrder = update.order }
         recolourIndex = update.recolourIndex
