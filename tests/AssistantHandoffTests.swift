@@ -47,7 +47,7 @@ enum AssistantHandoffTests {
 
         print("HandoffPlanner")
         do {
-            // A was main, the user clicked B (slot 1). SubSlotOrder gives order [c, a], recolour 1... here [b->a]
+            // A was main, the user clicked B (slot 1). SubSlotOrder gives order [c, a], recolour index 1.
             let order = ["c", "a"]
             let fly = HandoffPlanner.plan(oldMain: "a", newMain: "b", newOrder: order, recolourIndex: 1,
                                           visible: true, reduceMotion: false)

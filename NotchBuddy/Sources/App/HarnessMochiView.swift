@@ -25,9 +25,13 @@ struct HarnessMochiView: View {
     let isPaused: Bool
     /// False in the compact strip: no halo and no ring, just the Mochi (the prototype's quiet strip).
     let showsDecor: Bool
+    /// nil: the body colour switches instantly when `hex` changes. A rate (fraction of the gap
+    /// covered per 60 fps frame, e.g. 0.045 for the hand-off) blends there instead.
+    let blend: Double?
 
     @StateObject private var engine = BotEngine()
     @State private var hopStart: Double = 0
+    @State private var blendTarget: BlendRGB?
 
     /// Keys this wrapper drives itself. Foreign locks (an in-flight roll, a badge
     /// tween) are left alone.
@@ -38,13 +42,15 @@ struct HarnessMochiView: View {
          diameter: CGFloat = HarnessMetrics.bigMochi,
          hopToken: Int = 0,
          isPaused: Bool = false,
-         showsDecor: Bool = true) {
+         showsDecor: Bool = true,
+         blend: Double? = nil) {
         self.hex = hex
         self.state = state
         self.diameter = diameter
         self.hopToken = hopToken
         self.isPaused = isPaused
         self.showsDecor = showsDecor
+        self.blend = blend
     }
 
     var body: some View {
@@ -53,6 +59,7 @@ struct HarnessMochiView: View {
             ZStack {
                 if showsDecor { halo }
                 Canvas { context, size in
+                    stepBlend()
                     engine.update(dt: 1.0 / 60.0)
                     applyMotion(now: now)
                     engine.draw(context: context, size: size)
@@ -70,11 +77,28 @@ struct HarnessMochiView: View {
             engine.setState(state.botState, force: true)
         }
         .onChange(of: hex) { _, newValue in
-            engine.bodyColor = cgColorFromHex(newValue)
+            // Paused (island hidden): the timeline would not run the blend, so switch at once.
+            if let blend, blend < 1, !isPaused, let target = BlendRGB(hex: newValue) {
+                blendTarget = target
+            } else {
+                blendTarget = nil
+                engine.bodyColor = cgColorFromHex(newValue)
+            }
         }
         .onChange(of: state) { _, newValue in
             engine.setState(newValue.botState)
         }
+    }
+
+    // MARK: - Colour blend
+
+    /// One frame of the X -> Y body-colour blend (`ColorBlend`, frame-rate independent).
+    @MainActor
+    private func stepBlend() {
+        guard let target = blendTarget, let blend,
+              let current = engine.bodyColor.flatMap({ BlendRGB(cgColor: $0) }) else { return }
+        let next = ColorBlend.step(current, toward: target, rate: blend, dt: 1.0 / 60.0)
+        engine.bodyColor = next.cgColor
     }
 
     // MARK: - Halo
@@ -199,5 +223,22 @@ struct HarnessMochiView: View {
 
         engine.locks.subtract(Self.ownedKeys)
         engine.locks.formUnion(locked)
+    }
+}
+
+
+extension BlendRGB {
+    init?(hex: String) {
+        guard let c = cgColorFromHex(hex) else { return nil }
+        self.init(cgColor: c)
+    }
+
+    init?(cgColor: CGColor) {
+        guard let c = cgColor.components, c.count >= 3 else { return nil }
+        self.init(r: Double(c[0]), g: Double(c[1]), b: Double(c[2]))
+    }
+
+    var cgColor: CGColor {
+        CGColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: 1)
     }
 }
