@@ -54,6 +54,9 @@ jobs:
       - name: Agent session tests
         run: bash scripts/test-agent-session.sh
 
+      - name: Assistant logic tests
+        run: bash scripts/test-assistant-logic.sh
+
       - name: Build
         run: |
           xcodebuild \

@@ -1,0 +1,179 @@
+import Foundation
+
+@main
+@MainActor
+enum AssistantLogicTests {
+
+    static var failures = 0
+
+    static func checkTrue(_ label: String, _ value: Bool) {
+        if value { print("  ✓ \(label)") }
+        else      { print("  ✗ \(label)"); failures += 1 }
+    }
+
+    static func checkEq<T: Equatable>(_ label: String, _ got: T, _ expected: T) {
+        if got == expected { print("  ✓ \(label)") }
+        else { print("  ✗ \(label)  got: \(got)  expected: \(expected)"); failures += 1 }
+    }
+
+    static let t0 = Date(timeIntervalSince1970: 1_000_000)
+    static func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
+
+    static func sess(_ id: String, workspace: String = "ws", phase: SessionPhase = .working,
+                     attention: TimeInterval? = nil, last: TimeInterval = 0,
+                     seen: Bool = false) -> AgentSession {
+        AgentSession(id: id, kind: .claudeCode, cwd: "/code/\(workspace)", workspace: workspace,
+                     colorHex: "#FFFFFF", phase: phase, steps: [], lastPrompt: nil, finalLine: nil,
+                     attentionAt: attention.map(at), finishedSeen: seen, lastEventAt: at(last))
+    }
+
+    static func ids(_ list: [AgentSession]) -> [String] { list.map(\.id) }
+
+    static func main() {
+        print("MainAgentPicker")
+        do {
+            checkTrue("no sessions -> nil",
+                      MainAgentPicker.pick(sessions: [], selectedId: "x", contextWorkspace: "a",
+                                           previousMainId: "y") == nil)
+
+            let a = sess("a", workspace: "A", last: 1)
+            let b = sess("b", workspace: "B", last: 5)
+            let c = sess("c", workspace: "C", last: 3)
+
+            checkEq("clicked agent wins over everything",
+                    MainAgentPicker.pick(sessions: [a, b, sess("n", phase: .approval, attention: 1)],
+                                         selectedId: "a", contextWorkspace: "B", previousMainId: "b"), "a")
+            checkEq("a selectedId that died is ignored",
+                    MainAgentPicker.pick(sessions: [a, b], selectedId: "gone", contextWorkspace: nil,
+                                         previousMainId: nil), "b")
+
+            let needy = sess("needy", workspace: "C", phase: .approval, attention: 10, last: 10)
+            checkEq("an agent that needs you beats the context workspace",
+                    MainAgentPicker.pick(sessions: [a, b, needy], selectedId: nil, contextWorkspace: "A",
+                                         previousMainId: "b"), "needy")
+            let older = sess("older", phase: .question, attention: 4)
+            checkEq("oldest need first",
+                    MainAgentPicker.pick(sessions: [needy, older], selectedId: nil, contextWorkspace: nil,
+                                         previousMainId: nil), "older")
+            let fin = sess("fin", phase: .finished, attention: 20)
+            checkEq("finished-and-unseen counts as a need",
+                    MainAgentPicker.pick(sessions: [a, fin], selectedId: nil, contextWorkspace: "A",
+                                         previousMainId: "a"), "fin")
+            let finSeen = sess("fin", phase: .finished, attention: 20, seen: true)
+            checkEq("finished-and-seen does not",
+                    MainAgentPicker.pick(sessions: [a, finSeen], selectedId: nil, contextWorkspace: "A",
+                                         previousMainId: nil), "a")
+
+            checkEq("context workspace beats previous main",
+                    MainAgentPicker.pick(sessions: [a, b, c], selectedId: nil, contextWorkspace: "C",
+                                         previousMainId: "b"), "c")
+            let a2 = sess("a2", workspace: "A", last: 9)
+            checkEq("within the context workspace the latest lastEventAt wins",
+                    MainAgentPicker.pick(sessions: [a, a2, b], selectedId: nil, contextWorkspace: "A",
+                                         previousMainId: nil), "a2")
+            checkEq("context workspace without a session falls through to previous main",
+                    MainAgentPicker.pick(sessions: [a, b, c], selectedId: nil, contextWorkspace: "Z",
+                                         previousMainId: "c"), "c")
+            checkEq("nil context falls through to previous main",
+                    MainAgentPicker.pick(sessions: [a, b, c], selectedId: nil, contextWorkspace: nil,
+                                         previousMainId: "a"), "a")
+            checkEq("dead previous main falls through to the most recent",
+                    MainAgentPicker.pick(sessions: [a, b, c], selectedId: nil, contextWorkspace: nil,
+                                         previousMainId: "dead"), "b")
+            checkEq("no hints -> most recently active",
+                    MainAgentPicker.pick(sessions: [a, b, c], selectedId: nil, contextWorkspace: nil,
+                                         previousMainId: nil), "b")
+            let t1 = sess("t1", last: 7), t2 = sess("t2", last: 7)
+            checkEq("exact ties are deterministic",
+                    MainAgentPicker.pick(sessions: [t2, t1], selectedId: nil, contextWorkspace: nil,
+                                         previousMainId: nil), "t1")
+        }
+
+        print("AttentionQueue")
+        do {
+            checkTrue("empty in, empty out", AttentionQueue.order([]).isEmpty)
+
+            let work = sess("work", phase: .working)
+            let appr = sess("appr", phase: .approval, attention: 10)
+            let ques = sess("ques", phase: .question, attention: 5)
+            let blck = sess("blck", phase: .blocked, attention: 7)
+            let fin = sess("fin", phase: .finished, attention: 1)
+            let seen = sess("seen", phase: .finished, attention: 2, seen: true)
+            let idle = sess("idle", phase: .idle)
+            let q = AttentionQueue.order([work, fin, appr, seen, idle, blck, ques])
+            checkEq("blocking needs first by oldest attentionAt, finished-unseen last",
+                    ids(q), ["ques", "blck", "appr", "fin"])
+
+            let x = sess("x", phase: .approval, attention: 3, last: 9)
+            let y = sess("y", phase: .approval, attention: 3, last: 2)
+            checkEq("ties on attentionAt -> older lastEventAt first",
+                    ids(AttentionQueue.order([x, y])), ["y", "x"])
+
+            let f1 = sess("f1", phase: .finished, attention: 8)
+            let f2 = sess("f2", phase: .finished, attention: 4)
+            checkEq("finished-unseen are ordered oldest first too",
+                    ids(AttentionQueue.order([f1, f2])), ["f2", "f1"])
+        }
+
+        print("SubSlotOrder")
+        do {
+            var r = SubSlotOrder.update(order: ["b", "c"], alive: ["a", "b", "c"], oldMain: "a", newMain: "b")
+            checkEq("clicked sub keeps its slot and becomes the old main: order", r.order, ["a", "c"])
+            checkEq("clicked sub keeps its slot: recolour index is its slot", r.recolourIndex, 0)
+
+            r = SubSlotOrder.update(order: ["b", "c", "d"], alive: ["a", "b", "c", "d"], oldMain: "a", newMain: "c")
+            checkEq("middle slot swap keeps the others in place", r.order, ["b", "a", "d"])
+            checkEq("recolour index is 1", r.recolourIndex, 1)
+
+            r = SubSlotOrder.update(order: ["x", "b", "c"], alive: ["a", "b", "c"], oldMain: "a", newMain: "c")
+            checkEq("a dead id before the slot is dropped", r.order, ["b", "a"])
+            checkEq("recolour index counts in the cleaned order", r.recolourIndex, 1)
+
+            r = SubSlotOrder.update(order: ["b", "c"], alive: ["a", "b", "c", "n"], oldMain: "a", newMain: "n")
+            checkEq("new main was not a sub: old main appended, order intact", r.order, ["b", "c", "a"])
+            checkTrue("no recolour index when the new main was not a sub", r.recolourIndex == nil)
+
+            r = SubSlotOrder.update(order: ["b", "c"], alive: ["b", "c"], oldMain: nil, newMain: "b")
+            checkEq("first main picked from the subs: its slot closes", r.order, ["c"])
+            checkTrue("no recolour without an old main", r.recolourIndex == nil)
+
+            r = SubSlotOrder.update(order: ["b", "c", "d"], alive: ["b", "c", "d"], oldMain: "gone", newMain: "c")
+            checkEq("main dies: the order closes the gap", r.order, ["b", "d"])
+            checkTrue("main dies: no recolour index", r.recolourIndex == nil)
+
+            r = SubSlotOrder.update(order: ["b"], alive: ["a", "b", "c", "d"], oldMain: "a", newMain: "a")
+            checkEq("same main: new alive ids append, main never a sub", r.order, ["b", "c", "d"])
+            checkTrue("same main: no recolour", r.recolourIndex == nil)
+
+            r = SubSlotOrder.update(order: ["b", "c"], alive: ["a", "b"], oldMain: "a", newMain: "b")
+            checkEq("a dead sub is removed", r.order, ["a"])
+            checkEq("swap still reports the slot", r.recolourIndex, 0)
+
+            r = SubSlotOrder.update(order: [], alive: [], oldMain: nil, newMain: nil)
+            checkTrue("nothing in, nothing out", r.order.isEmpty && r.recolourIndex == nil)
+
+            r = SubSlotOrder.update(order: ["b", "a"], alive: ["a", "b", "c"], oldMain: "a", newMain: "b")
+            checkEq("old main already among the subs is not duplicated", r.order, ["a", "c"])
+            checkTrue("and nothing to recolour", r.recolourIndex == nil)
+
+            // Surviving subs never change slot across a sequence of swaps.
+            var order = ["b", "c"]
+            var main = "a"
+            for next in ["c", "a", "b"] {
+                let u = SubSlotOrder.update(order: order, alive: ["a", "b", "c"], oldMain: main, newMain: next)
+                order = u.order; main = next
+            }
+            checkEq("three hand-offs in a row keep two subs, never the main",
+                    Set(order).union([main]), Set(["a", "b", "c"]))
+            checkEq("and the slot count stays at two", order.count, 2)
+        }
+
+        print("")
+        if failures == 0 {
+            print("All tests passed.")
+        } else {
+            print("\(failures) test(s) failed.")
+            exit(1)
+        }
+    }
+}
