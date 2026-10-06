@@ -8,15 +8,12 @@ struct IslandViewContent: View {
 
     var body: some View {
         switch view {
-        case .overview:  HarnessVoiceView(state: state, view: view)
+        // The assistant panel owns the home and the four alert cards. `IslandContainer` draws it
+        // directly (full island size, no header/ZStack of the other views) and `IslandContentView`
+        // skips these cases, so this is the one place that names the routing.
+        case .overview, .approval, .question, .error, .finished:
+            AssistantPanelView(model: AssistantModel.shared, state: state)
         case .empty:     EmptyStateView(state: state)
-        // The harness answers permissions inline, in the flow above its composer, so the
-        // approval surface renders the harness rather than swapping to `ApprovalView`
-        // (`IslandView.isHarnessSurface` explains why `question` is not in the same boat).
-        case .approval:  HarnessVoiceView(state: state, view: view)
-        case .question:  QuestionView(state: state)
-        case .error:     ErrorView(state: state)
-        case .finished:  FinishedView(state: state)
         case .confused:  ConfusedView()
         case .upload:    UploadView(state: state)
         case .uploading: UploadingView(state: state)

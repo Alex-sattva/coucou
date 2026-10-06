@@ -39,6 +39,34 @@ struct IslandContainer: View {
         return min(300, base + CGFloat(state.chatHistory.count) * perMsg)
     }
 
+    /// Height of the assistant panel for its current card (`AssistantMetrics`).
+    private var assistantPanelHeight: CGFloat { AssistantMetrics.height(for: assistant.panelContent) }
+
+    /// Expanded island height for `view`: chat and the assistant panel size to their content.
+    private func expandedHeight(for view: IslandView, fallback h: CGFloat) -> CGFloat {
+        if view == .prompt { return chatPromptHeight }
+        if view.isAssistantPanel { return assistantPanelHeight }
+        return h
+    }
+
+    /// Strip geometry. Expanded, the strip stays in the top row (camera level) at the compact width's
+    /// slot positions, so it is measured against the notch height, not the panel height.
+    private var stripGeometry: AssistantStripGeometry {
+        let resting: IslandRestingLayout
+        let height: CGFloat
+        if state.mode == .expanded {
+            height = state.notchHeight
+            let compactW = AssistantStripGeometry.compactWidth(
+                notchWidth: state.notchWidth, subs: max(0, state.sessionStore.sessions.count - 1))
+            resting = IslandRestingLayout(width: compactW, height: height)
+        } else {
+            height = islandHeight
+            resting = IslandRestingLayout(width: islandWidth, height: islandHeight)
+        }
+        return AssistantStripGeometry(islandWidth: islandWidth, islandHeight: height,
+                                      notchWidth: state.notchWidth, restingDiameter: resting.botDiameter)
+    }
+
     /// Pixels the content must be pushed down to clear the concave ear transparent area.
     /// = 0 in expanded mode (no ears), = earRadius in compact/notch mode.
     private var earOffset: CGFloat { max(0, -islandTopRadius) }
@@ -55,13 +83,16 @@ struct IslandContainer: View {
 
         // The harness draws its own Mochi inside its agent card, so on its surfaces the
         // shared bot stands down rather than stacking a second one on top of it.
-        let botHidden = uploadActive || greetingActive
-            || (state.mode == .expanded && state.view.isHarnessSurface)
+        // The assistant panel draws the main Mochi (`AssistantMainMochi`) instead of the ship bot.
+        let panelActive = state.mode == .expanded && state.view.isAssistantPanel
+        let botHidden = uploadActive || greetingActive || panelActive
 
         // Compact with at least one agent session: the quiet strip (main Mochi left of the camera,
         // small Mochis right) replaces the resting bot and the mini grid. With no session the
         // shipping compact island is untouched.
         let stripActive = state.mode == .compact && !state.sessionStore.sessions.isEmpty
+        // Expanded on a panel view the small Mochis stay in the strip row, right of the camera.
+        let stripShown = stripActive || (panelActive && !state.sessionStore.sessions.isEmpty)
 
         return ZStack(alignment: .topLeading) {
             // Black island shape
@@ -92,6 +123,15 @@ struct IslandContainer: View {
                             .offset(y: 8)
                     }
                     .transition(.opacity)
+                } else if panelActive {
+                    // The assistant panel (home + approval / question / error / finished).
+                    AssistantPanelView(model: assistant, state: state)
+                        .frame(width: IslandConst.expandedWidth, height: islandHeight, alignment: .topLeading)
+                        .offset(x: (islandWidth - IslandConst.expandedWidth) / 2)
+                        .frame(width: islandWidth, height: islandHeight, alignment: .topLeading)
+                        .clipShape(IslandShape(width: islandWidth, height: islandHeight,
+                                              cornerRadius: cornerRadius, topRadius: islandTopRadius))
+                        .transition(.opacity)
                 } else {
                     IslandContentView(state: state)
                         .frame(width: islandWidth, height: islandHeight - earOffset)
@@ -121,22 +161,22 @@ struct IslandContainer: View {
             // The main Mochi: one instance, always in the tree (Step 7 moves it into the panel).
             AssistantMainMochi(model: assistant, state: state, islandW: islandWidth, islandH: islandHeight)
 
-            // Small Mochis right of the camera.
+            // Small Mochis right of the camera (also while the panel is open).
             AssistantStrip(
                 model: assistant,
-                geometry: AssistantStripGeometry(
-                    islandWidth: islandWidth, islandHeight: islandHeight,
-                    notchWidth: state.notchWidth,
-                    restingDiameter: IslandRestingLayout(width: islandWidth, height: islandHeight).botDiameter),
-                isPaused: !stripActive,
+                geometry: stripGeometry,
+                isPaused: !stripShown,
                 onSelect: { id in
+                    // Selecting makes the panel open; the window controller expands the island.
                     assistant.select(id)
-                    NotificationCenter.default.post(name: .hookExpand, object: IslandView.overview)
                 })
-                .mask(alignment: .topLeading) { Rectangle().frame(width: islandWidth, height: islandHeight) }
-                .opacity(stripActive ? 1 : 0)
-                .allowsHitTesting(stripActive)
-                .animation(.easeInOut(duration: 0.2), value: stripActive)
+                .mask(alignment: .topLeading) {
+                    Rectangle().frame(width: islandWidth,
+                                      height: state.mode == .expanded ? state.notchHeight : islandHeight)
+                }
+                .opacity(stripShown ? 1 : 0)
+                .allowsHitTesting(stripShown)
+                .animation(.easeInOut(duration: 0.2), value: stripShown)
 
             CountdownBar(state: state, islandW: islandWidth)
 
@@ -162,7 +202,7 @@ struct IslandContainer: View {
             let tr: CGFloat = 0
             withAnimation(anim) {
                 islandWidth      = w
-                islandHeight     = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
+                islandHeight     = newMode == .expanded ? expandedHeight(for: state.view, fallback: h) : h
                 cornerRadius     = cr
                 islandTopRadius  = tr
             }
@@ -187,8 +227,13 @@ struct IslandContainer: View {
                                     sessionCount: state.sessionStore.sessions.count)
             withAnimation(openSpring) {
                 islandWidth  = w
-                islandHeight = newView == .prompt ? chatPromptHeight : h
+                islandHeight = expandedHeight(for: newView, fallback: h)
             }
+        }
+        .onChange(of: assistant.panelContent) { _, _ in
+            // The card changed (approval -> question, files, diff...): the island follows its content.
+            guard state.mode == .expanded, state.view.isAssistantPanel else { return }
+            withAnimation(openSpring) { islandHeight = assistantPanelHeight }
         }
         .onChange(of: state.chatHistory.count) { _, _ in
             guard state.mode == .expanded, state.view == .prompt else { return }
@@ -200,7 +245,7 @@ struct IslandContainer: View {
                                     nw: state.notchWidth, nh: state.notchHeight,
                                     sessionCount: state.sessionStore.sessions.count)
             islandWidth      = w
-            islandHeight     = state.view == .prompt ? chatPromptHeight : h
+            islandHeight     = state.mode == .expanded ? expandedHeight(for: state.view, fallback: h) : h
             cornerRadius     = state.mode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             islandTopRadius  = 0
         }
@@ -476,7 +521,8 @@ struct IslandContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: state.view == .confused)
 
             ZStack {
-                ForEach(IslandView.allCases, id: \.self) { v in
+                // The assistant panel views are drawn by IslandContainer, not stacked here.
+                ForEach(IslandView.allCases.filter { !$0.isAssistantPanel }, id: \.self) { v in
                     let active = state.view == v
                     // Views that fill available height instead of the fixed 98pt content frame:
                     // chat (prompt) is always flexible; mail is flexible only when active so

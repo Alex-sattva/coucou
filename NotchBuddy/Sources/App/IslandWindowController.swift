@@ -556,15 +556,7 @@ final class IslandWindowController: NSWindowController {
             NotificationCenter.default.post(name: .triggerEmote, object: BotEmote.annoyed)
             return
         }
-        let terminalBundleIds = ["com.apple.Terminal", "com.googlecode.iterm2",
-                                 "net.kovidgoyal.kitty", "com.mitchellh.ghostty"]
-        let activated = terminalBundleIds.compactMap { id in
-            NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == id }
-        }.first.map { $0.activate(options: .activateIgnoringOtherApps) }
-        if activated == nil {
-            NSWorkspace.shared.open(
-                URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
-        }
+        TerminalJump.activate()
         collapse()
     }
 
@@ -1030,12 +1022,13 @@ final class IslandWindowController: NSWindowController {
         // left half of the composer. Three unlucky clicks there threw the island into
         // `.confused` for 3.3 s (`handleDizzy`), and a >3 pt drag attached the window.
         // There is nothing to hit when the character is not on screen.
-        if s.mode == .expanded && s.view.isHarnessSurface { return false }
+        if s.mode == .expanded && (s.view.isHarnessSurface || s.view.isAssistantPanel) { return false }
         let panelH = window?.frame.height ?? 320
         let panelW = window?.frame.width  ?? 720
         let (islandW, fixedH) = islandSize(mode: s.mode, view: s.view,
                                             progress: s.uploadProgress, nw: notchW, nh: notchH,
-                                            sessionCount: s.sessionStore.sessions.count)
+                                            sessionCount: s.sessionStore.sessions.count,
+                                            panelHeight: AssistantMetrics.height(for: AssistantModel.shared.panelContent))
         // Chat view resizes dynamically — must match IslandContainer.chatPromptHeight
         let islandH: CGFloat
         if s.mode == .expanded && s.view == .prompt {
@@ -1102,7 +1095,8 @@ final class IslandPanel: NSPanel {
         let s = AppState.shared
         let (w, fixedH) = islandSize(mode: s.mode, view: s.view,
                                       progress: s.uploadProgress, nw: nw, nh: nh,
-                                      sessionCount: s.sessionStore.sessions.count)
+                                      sessionCount: s.sessionStore.sessions.count,
+                                      panelHeight: AssistantMetrics.height(for: AssistantModel.shared.panelContent))
         let h: CGFloat
         if s.mode == .expanded && s.view == .prompt {
             let base: CGFloat = 240
@@ -1114,6 +1108,27 @@ final class IslandPanel: NSPanel {
         return CGRect(x: (frame.width - w) / 2, y: frame.height - h, width: w, height: h)
     }
 }
+
+// MARK: - Terminal jump
+
+#if !APPSTORE
+/// Brings the user's terminal to the front (or opens Terminal.app). Shared by the jump-to-terminal
+/// shortcut and the assistant panel's "Open in terminal" button.
+enum TerminalJump {
+    @MainActor
+    static func activate() {
+        let terminalBundleIds = ["com.apple.Terminal", "com.googlecode.iterm2",
+                                 "net.kovidgoyal.kitty", "com.mitchellh.ghostty"]
+        let activated = terminalBundleIds.compactMap { id in
+            NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == id }
+        }.first.map { $0.activate(options: .activateIgnoringOtherApps) }
+        if activated == nil {
+            NSWorkspace.shared.open(
+                URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
+        }
+    }
+}
+#endif
 
 // MARK: - Ghost bot view (animated scale-in on appear)
 
@@ -1166,7 +1181,8 @@ func islandSize(mode: IslandMode, view: IslandView,
                 progress: Double = 0,
                 nw: CGFloat = IslandConst.notchWidth,
                 nh: CGFloat = IslandConst.notchHeight,
-                sessionCount: Int = 0) -> (CGFloat, CGFloat) {
+                sessionCount: Int = 0,
+                panelHeight: CGFloat? = nil) -> (CGFloat, CGFloat) {
     switch mode {
     case .hidden:   return (nw, nh)
     case .compact:
@@ -1178,6 +1194,8 @@ func islandSize(mode: IslandMode, view: IslandView,
         return (nw + 160, nh)
     case .expanded:
         let layout = IslandConst.viewLayouts[view]!
+        // The assistant panel's height follows its content (`AssistantMetrics`).
+        if view.isAssistantPanel, let panelHeight { return (IslandConst.expandedWidth, panelHeight) }
         return (IslandConst.expandedWidth, layout.height)
     }
 }
