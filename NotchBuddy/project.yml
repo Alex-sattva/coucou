@@ -69,6 +69,8 @@ targets:
         NSSupportsAutomaticGraphicsSwitching: YES
         NSAppleEventsUsageDescription: "Pour sauter au terminal, envoyer des mails et piloter Musique."
         NSAccessibilityUsageDescription: "Pour lire le titre de la fenêtre active et l'attacher comme contexte."
+        NSMicrophoneUsageDescription: "Pour écouter ta voix quand tu maintiens ⌥ et la transcrire sur ton Mac."
+        NSSpeechRecognitionUsageDescription: "Pour transcrire ce que tu dis, directement sur ton Mac."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
@@ -105,6 +107,8 @@ targets:
         NSSupportsAutomaticGraphicsSwitching: YES
         LSApplicationCategoryType: public.app-category.developer-tools
         ITSAppUsesNonExemptEncryption: NO
+        NSMicrophoneUsageDescription: "Pour écouter ta voix quand tu maintiens ⌥ et la transcrire sur ton Mac."
+        NSSpeechRecognitionUsageDescription: "Pour transcrire ce que tu dis, directement sur ton Mac."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:

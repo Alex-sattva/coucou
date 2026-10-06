@@ -33,6 +33,10 @@
 	<string>Pour sauter au terminal, envoyer des mails et piloter Musique.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Pour écouter ta voix quand tu maintiens ⌥ et la transcrire sur ton Mac.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Pour transcrire ce que tu dis, directement sur ton Mac.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 </dict>
