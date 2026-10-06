@@ -32,7 +32,7 @@ struct AssistantMainMochi: View {
 
     var body: some View {
         let session = model.mainSession
-        let inPanel = state.mode == .expanded && state.view.isAssistantPanel
+        let inPanel = state.mode == .expanded && model.routesToPanel(state.view)
         let inStrip = state.mode == .compact && session != nil
         let visible = inStrip || inPanel
         let geo = AssistantStripGeometry(

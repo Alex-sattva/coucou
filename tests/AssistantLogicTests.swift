@@ -237,6 +237,19 @@ enum AssistantLogicTests {
         }
 
         print("")
+        print("AssistantRouting")
+        do {
+            checkTrue("home is always the panel",
+                      AssistantRouting.usesPanel(isOverview: true, isAlertView: false, hasSessionNeed: false))
+            checkTrue("an alert backed by a session need goes to the panel",
+                      AssistantRouting.usesPanel(isOverview: false, isAlertView: true, hasSessionNeed: true))
+            checkTrue("an alert with no session behind it keeps the shipping view",
+                      !AssistantRouting.usesPanel(isOverview: false, isAlertView: true, hasSessionNeed: false))
+            checkTrue("other views are never the panel",
+                      !AssistantRouting.usesPanel(isOverview: false, isAlertView: false, hasSessionNeed: true))
+        }
+
+        print("")
         print("AssistantPanelContent / AssistantMetrics")
         do {
             let ap = sess("a", phase: .approval, attention: 1)

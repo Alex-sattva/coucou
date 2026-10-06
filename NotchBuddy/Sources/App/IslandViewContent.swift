@@ -8,12 +8,15 @@ struct IslandViewContent: View {
 
     var body: some View {
         switch view {
-        // The assistant panel owns the home and the four alert cards. `IslandContainer` draws it
-        // directly (full island size, no header/ZStack of the other views) and `IslandContentView`
-        // skips these cases, so this is the one place that names the routing.
-        case .overview, .approval, .question, .error, .finished:
-            AssistantPanelView(model: AssistantModel.shared, state: state)
+        // The home is the assistant panel; `IslandContainer` draws it directly (full island size) and
+        // `IslandContentView` skips it. The alert views below are the shipping cards: the container
+        // draws the panel instead only when an agent session needs the user (`AssistantRouting`).
+        case .overview:  AssistantPanelView(model: AssistantModel.shared, state: state)
         case .empty:     EmptyStateView(state: state)
+        case .approval:  ApprovalView(state: state)
+        case .question:  QuestionView(state: state)
+        case .error:     ErrorView(state: state)
+        case .finished:  FinishedView(state: state)
         case .confused:  ConfusedView()
         case .upload:    UploadView(state: state)
         case .uploading: UploadingView(state: state)

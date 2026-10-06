@@ -246,14 +246,14 @@ final class IslandWindowController: NSWindowController {
         if open {
             if state.mode == .expanded {
                 // Already open on another view (settings, chat...): only a blocking need takes it over.
-                if !state.view.isAssistantPanel && AssistantModel.shared.hasBlockingNeed {
+                if !AssistantModel.shared.routesToPanel(state.view) && AssistantModel.shared.hasBlockingNeed {
                     state.view = .overview
                 }
                 return
             }
             fsm.openedExternally()
             expand(to: .overview)
-        } else if state.mode == .expanded && state.view.isAssistantPanel {
+        } else if state.mode == .expanded && AssistantModel.shared.routesToPanel(state.view) {
             collapse()
         }
     }
@@ -262,7 +262,7 @@ final class IslandWindowController: NSWindowController {
     /// nothing for the panel to show, so callers keep their shipping behaviour.
     /// Esc on the open panel: remember the current needs and fold. False when the panel is not showing.
     private func dismissAssistantPanel() -> Bool {
-        guard state.mode == .expanded, state.view.isAssistantPanel, AssistantModel.shared.isOpen else { return false }
+        guard state.mode == .expanded, AssistantModel.shared.routesToPanel(state.view), AssistantModel.shared.isOpen else { return false }
         AssistantModel.shared.dismiss()   // closes the panel; assistantOpenChanged folds the island
         return true
     }
@@ -658,8 +658,9 @@ final class IslandWindowController: NSWindowController {
         NotificationCenter.default.addObserver(forName: .hookExpand, object: nil, queue: .main) { [weak self] note in
             guard let self, let view = note.object as? IslandView else { return }
             // The panel shows only while its open rule says so: after Esc, the same needs do not
-            // pop it open again (pill-based alerts used to force it).
-            if view.isAssistantPanel && !AssistantModel.shared.isOpen { return }
+            // pop it open again. An alert with no agent session behind it (integration pills...)
+            // is not the panel's: it expands the island exactly as on main.
+            if AssistantModel.shared.routesToPanel(view) && !AssistantModel.shared.isOpen { return }
             self.fsm.openedExternally()
             self.expand(to: view)
         }
@@ -1093,13 +1094,14 @@ final class IslandWindowController: NSWindowController {
         // left half of the composer. Three unlucky clicks there threw the island into
         // `.confused` for 3.3 s (`handleDizzy`), and a >3 pt drag attached the window.
         // There is nothing to hit when the character is not on screen.
-        if s.mode == .expanded && (s.view.isHarnessSurface || s.view.isAssistantPanel) { return false }
+        if s.mode == .expanded && AssistantModel.shared.routesToPanel(s.view) { return false }
         let panelH = window?.frame.height ?? 320
         let panelW = window?.frame.width  ?? 720
         let (islandW, fixedH) = islandSize(mode: s.mode, view: s.view,
                                             progress: s.uploadProgress, nw: notchW, nh: notchH,
                                             sessionCount: s.sessionStore.sessions.count,
-                                            panelHeight: AssistantMetrics.height(for: AssistantModel.shared.panelContent))
+                                            panelHeight: AssistantModel.shared.routesToPanel(s.view)
+                                                ? AssistantMetrics.height(for: AssistantModel.shared.panelContent) : nil)
         // Chat view resizes dynamically — must match IslandContainer.chatPromptHeight
         let islandH: CGFloat
         if s.mode == .expanded && s.view == .prompt {
@@ -1167,7 +1169,8 @@ final class IslandPanel: NSPanel {
         let (w, fixedH) = islandSize(mode: s.mode, view: s.view,
                                       progress: s.uploadProgress, nw: nw, nh: nh,
                                       sessionCount: s.sessionStore.sessions.count,
-                                      panelHeight: AssistantMetrics.height(for: AssistantModel.shared.panelContent))
+                                      panelHeight: AssistantModel.shared.routesToPanel(s.view)
+                                                ? AssistantMetrics.height(for: AssistantModel.shared.panelContent) : nil)
         let h: CGFloat
         if s.mode == .expanded && s.view == .prompt {
             let base: CGFloat = 240

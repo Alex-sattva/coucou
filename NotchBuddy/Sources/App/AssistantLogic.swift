@@ -169,6 +169,18 @@ enum AssistantOpenRules {
     }
 }
 
+/// Which expanded views the assistant panel draws.
+///
+/// The home (`.overview`) is always the panel. The four alert views (approval, question, error,
+/// finished) go to the panel only when an agent session needs the user. An alert with no
+/// `AgentSession` behind it (an integration pill, a hook event without a session id) keeps its
+/// shipping view and its shipping expansion, exactly as on `main`.
+enum AssistantRouting {
+    static func usesPanel(isOverview: Bool, isAlertView: Bool, hasSessionNeed: Bool) -> Bool {
+        isOverview || (isAlertView && hasSessionNeed)
+    }
+}
+
 /// What the panel shows under the top row. Decides the panel height.
 enum AssistantPanelContent: Equatable, Sendable {
     case bar                       // summoned with nothing pending: the bar row only

@@ -30,7 +30,15 @@ extension IslandView {
     /// Mochi (otherwise the 58 pt home bot is painted over the harness's 26 pt card Mochi).
     var isHarnessSurface: Bool { self == .overview || self == .approval }
 
-    /// Views drawn by the assistant panel (`AssistantPanelView`): the home and the four alert cards.
+    /// The four alert views. The panel draws them only for agent sessions (`AssistantRouting`).
+    var isAlertView: Bool {
+        switch self {
+        case .approval, .question, .error, .finished: return true
+        default: return false
+        }
+    }
+
+    /// Views the assistant panel CAN draw (`AssistantPanelView`): the home and the four alert cards.
     /// The panel picks its card from the main session, not from which of these is current.
     var isAssistantPanel: Bool {
         switch self {

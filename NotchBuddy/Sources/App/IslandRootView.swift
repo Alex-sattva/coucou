@@ -45,7 +45,7 @@ struct IslandContainer: View {
     /// Expanded island height for `view`: chat and the assistant panel size to their content.
     private func expandedHeight(for view: IslandView, fallback h: CGFloat) -> CGFloat {
         if view == .prompt { return chatPromptHeight }
-        if view.isAssistantPanel { return assistantPanelHeight }
+        if assistant.routesToPanel(view) { return assistantPanelHeight }
         return h
     }
 
@@ -84,7 +84,7 @@ struct IslandContainer: View {
         // The harness draws its own Mochi inside its agent card, so on its surfaces the
         // shared bot stands down rather than stacking a second one on top of it.
         // The assistant panel draws the main Mochi (`AssistantMainMochi`) instead of the ship bot.
-        let panelActive = state.mode == .expanded && state.view.isAssistantPanel
+        let panelActive = state.mode == .expanded && assistant.routesToPanel(state.view)
         let botHidden = uploadActive || greetingActive || panelActive
 
         // Compact with at least one agent session: the quiet strip (main Mochi left of the camera,
@@ -232,7 +232,7 @@ struct IslandContainer: View {
         }
         .onChange(of: assistant.panelContent) { _, _ in
             // The card changed (approval -> question, files, diff...): the island follows its content.
-            guard state.mode == .expanded, state.view.isAssistantPanel else { return }
+            guard state.mode == .expanded, assistant.routesToPanel(state.view) else { return }
             withAnimation(openSpring) { islandHeight = assistantPanelHeight }
         }
         .onChange(of: state.chatHistory.count) { _, _ in
@@ -521,8 +521,8 @@ struct IslandContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: state.view == .confused)
 
             ZStack {
-                // The assistant panel views are drawn by IslandContainer, not stacked here.
-                ForEach(IslandView.allCases.filter { !$0.isAssistantPanel }, id: \.self) { v in
+                // The home is the assistant panel, drawn by IslandContainer, not stacked here.
+                ForEach(IslandView.allCases.filter { $0 != .overview }, id: \.self) { v in
                     let active = state.view == v
                     // Views that fill available height instead of the fixed 98pt content frame:
                     // chat (prompt) is always flexible; mail is flexible only when active so

@@ -33,7 +33,7 @@ final class AssistantModel: ObservableObject {
     /// The card the panel shows for the main session. Decides the panel height.
     @Published private(set) var panelContent: AssistantPanelContent = .bar
     /// Sessions that need the user (approval / question / blocked, then finished-and-unseen).
-    private(set) var queue: [AgentSession] = []
+    @Published private(set) var queue: [AgentSession] = []
     /// The finished card shows its diff in place instead of the file list.
     @Published private(set) var showsDiff = false
 
@@ -136,6 +136,12 @@ final class AssistantModel: ObservableObject {
 
     /// The island must not fold on its own while the panel is open on something that needs the user.
     var holdsIslandOpen: Bool { isOpen && !queue.isEmpty }
+
+    /// Whether the assistant panel draws `view` right now (`AssistantRouting`).
+    func routesToPanel(_ view: IslandView) -> Bool {
+        AssistantRouting.usesPanel(isOverview: view == .overview, isAlertView: view.isAlertView,
+                                   hasSessionNeed: !queue.isEmpty)
+    }
 
     /// The head of the queue is blocking (approval / question / blocked), not just a finished card.
     var hasBlockingNeed: Bool {
