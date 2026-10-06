@@ -198,6 +198,80 @@ enum AssistantLogicTests {
         }
 
         print("")
+        print("AssistantOpenRules")
+        do {
+            let ap = sess("a", phase: .approval, attention: 5)
+            let fin = sess("f", phase: .finished, attention: 9)
+            let work = sess("w", phase: .working)
+            let q1 = AttentionQueue.order([ap, work])
+            let sig1 = AssistantOpenRules.signature(queue: q1)
+            checkEq("empty queue has an empty signature", AssistantOpenRules.signature(queue: []), "")
+            checkTrue("nothing pending, nothing summoned: closed",
+                      !AssistantOpenRules.isOpen(summoned: false, selectedId: nil, queue: [], dismissedSignature: nil))
+            checkTrue("a need opens the panel",
+                      AssistantOpenRules.isOpen(summoned: false, selectedId: nil, queue: q1, dismissedSignature: nil))
+            checkTrue("dismissing that need keeps it closed",
+                      !AssistantOpenRules.isOpen(summoned: false, selectedId: nil, queue: q1, dismissedSignature: sig1))
+            let q2 = AttentionQueue.order([ap, fin])
+            checkTrue("a new need changes the signature and reopens",
+                      AssistantOpenRules.isOpen(summoned: false, selectedId: nil, queue: q2, dismissedSignature: sig1))
+            let ap2 = sess("a", phase: .approval, attention: 50)
+            checkTrue("the same session asking again reopens",
+                      AssistantOpenRules.isOpen(summoned: false, selectedId: nil,
+                                                queue: AttentionQueue.order([ap2]), dismissedSignature: sig1))
+            checkTrue("summoned opens with an empty queue",
+                      AssistantOpenRules.isOpen(summoned: true, selectedId: nil, queue: [], dismissedSignature: nil))
+            checkTrue("a clicked agent opens it",
+                      AssistantOpenRules.isOpen(summoned: false, selectedId: "w", queue: [], dismissedSignature: nil))
+            checkTrue("summon wins over a dismissed signature",
+                      AssistantOpenRules.isOpen(summoned: true, selectedId: nil, queue: q1, dismissedSignature: sig1))
+        }
+
+        print("")
+        print("AssistantPanelContent / AssistantMetrics")
+        do {
+            let ap = sess("a", phase: .approval, attention: 1)
+            checkEq("approval with a held request", AssistantPanelContent.resolve(
+                main: ap, hasApproval: true, questionRows: nil, finishedFiles: 0, showsDiff: false), .approval)
+            checkEq("approval whose request timed out has no card", AssistantPanelContent.resolve(
+                main: ap, hasApproval: false, questionRows: nil, finishedFiles: 0, showsDiff: false), .bar)
+            checkEq("question card", AssistantPanelContent.resolve(
+                main: sess("q", phase: .question, attention: 1), hasApproval: false, questionRows: 4,
+                finishedFiles: 0, showsDiff: false), .question(rows: 4))
+            checkEq("question without a held request", AssistantPanelContent.resolve(
+                main: sess("q", phase: .question, attention: 1), hasApproval: false, questionRows: nil,
+                finishedFiles: 0, showsDiff: false), .bar)
+            checkEq("blocked", AssistantPanelContent.resolve(
+                main: sess("b", phase: .blocked, attention: 1), hasApproval: false, questionRows: nil,
+                finishedFiles: 0, showsDiff: false), .blocked)
+            checkEq("finished unseen", AssistantPanelContent.resolve(
+                main: sess("f", phase: .finished, attention: 1), hasApproval: false, questionRows: nil,
+                finishedFiles: 2, showsDiff: false), .finished(files: 2))
+            checkEq("finished and seen is just the bar", AssistantPanelContent.resolve(
+                main: sess("f", phase: .finished, attention: 1, seen: true), hasApproval: false,
+                questionRows: nil, finishedFiles: 2, showsDiff: false), .bar)
+            checkEq("diff opens only when there are files", AssistantPanelContent.resolve(
+                main: sess("f", phase: .finished, attention: 1), hasApproval: false, questionRows: nil,
+                finishedFiles: 0, showsDiff: true), .finished(files: 0))
+            checkEq("diff", AssistantPanelContent.resolve(
+                main: sess("f", phase: .finished, attention: 1), hasApproval: false, questionRows: nil,
+                finishedFiles: 1, showsDiff: true), .diff)
+            checkEq("working main: bar", AssistantPanelContent.resolve(
+                main: sess("w"), hasApproval: false, questionRows: nil, finishedFiles: 0, showsDiff: false), .bar)
+            checkEq("no main: bar", AssistantPanelContent.resolve(
+                main: nil, hasApproval: false, questionRows: nil, finishedFiles: 0, showsDiff: false), .bar)
+
+            checkEq("bar 112", AssistantMetrics.height(for: .bar), 112)
+            checkEq("approval 236", AssistantMetrics.height(for: .approval), 236)
+            checkEq("blocked 262", AssistantMetrics.height(for: .blocked), 262)
+            checkEq("done with 2 files 248", AssistantMetrics.height(for: .finished(files: 2)), 248)
+            checkEq("done caps at 3 file rows", AssistantMetrics.height(for: .finished(files: 9)), 269)
+            checkEq("question = rows x 34 + 120", AssistantMetrics.height(for: .question(rows: 5)), 290)
+            checkTrue("every height fits the 320 pt window",
+                      AssistantMetrics.height(for: .question(rows: 40)) <= 320)
+        }
+
+        print("")
         if failures == 0 {
             print("All tests passed.")
         } else {

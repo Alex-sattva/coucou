@@ -140,3 +140,81 @@ extension AgentSession {
         }
     }
 }
+
+// MARK: - Panel: open rule and content
+
+/// When the assistant panel is open. Pure, so the state machine is tested without the UI.
+///
+/// open = summoned || selectedId != nil || (queue not empty && queue signature != dismissed signature)
+enum AssistantOpenRules {
+    /// Changes whenever a need appears, changes phase, or is answered. Includes `attentionAt`, so
+    /// the same session asking twice gives two different signatures. Empty queue -> "".
+    static func signature(queue: [AgentSession]) -> String {
+        queue.map { "\($0.id)|\($0.phase.rawValue)|\($0.attentionAt?.timeIntervalSince1970 ?? 0)" }
+            .joined(separator: ",")
+    }
+
+    static func isOpen(summoned: Bool, selectedId: String?, queue: [AgentSession],
+                       dismissedSignature: String?) -> Bool {
+        if summoned || selectedId != nil { return true }
+        guard !queue.isEmpty else { return false }
+        return signature(queue: queue) != dismissedSignature
+    }
+}
+
+/// What the panel shows under the top row. Decides the panel height.
+enum AssistantPanelContent: Equatable, Sendable {
+    case bar                       // summoned with nothing pending: the bar row only
+    case approval
+    case question(rows: Int)       // rows = option buttons + the "Other..." row
+    case blocked
+    case finished(files: Int)
+    case diff                      // the finished card's diff, opened in place
+
+    /// The card for the main session. `hasApproval` / `questionRows` say whether the held request
+    /// for THAT session still exists (a timed-out request has no card, whatever the phase says).
+    static func resolve(main: AgentSession?, hasApproval: Bool, questionRows: Int?,
+                        finishedFiles: Int, showsDiff: Bool) -> AssistantPanelContent {
+        guard let main else { return .bar }
+        switch main.phase {
+        case .approval where hasApproval: return .approval
+        case .question:
+            if let rows = questionRows { return .question(rows: rows) }
+            return .bar
+        case .blocked: return .blocked
+        case .finished where !main.finishedSeen:
+            return showsDiff && finishedFiles > 0 ? .diff : .finished(files: finishedFiles)
+        default: return .bar
+        }
+    }
+}
+
+/// Panel heights in points. The prototype (variant D) values are the starting point; the
+/// finished card grows by one file row (21 pt) per changed file, up to 3, and the question card
+/// by 34 pt per option row.
+enum AssistantMetrics {
+    static let bar: CGFloat = 112
+    static let approval: CGFloat = 236
+    static let blocked: CGFloat = 262
+    static let finishedBase: CGFloat = 206
+    static let fileRow: CGFloat = 21
+    static let maxFileRows = 3
+    static let questionBase: CGFloat = 120
+    static let questionRow: CGFloat = 34
+    static let diff: CGFloat = 300
+    /// The island window is 320 pt tall.
+    static let maxHeight: CGFloat = 320
+
+    static func height(for content: AssistantPanelContent) -> CGFloat {
+        let h: CGFloat
+        switch content {
+        case .bar: h = bar
+        case .approval: h = approval
+        case .blocked: h = blocked
+        case .question(let rows): h = questionBase + CGFloat(max(1, rows)) * questionRow
+        case .finished(let files): h = finishedBase + CGFloat(min(files, maxFileRows)) * fileRow
+        case .diff: h = diff
+        }
+        return min(h, maxHeight)
+    }
+}
