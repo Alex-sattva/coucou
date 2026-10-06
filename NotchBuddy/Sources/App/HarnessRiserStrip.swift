@@ -9,10 +9,10 @@ import SwiftUI
 /// own `CardBackground` and a hardcoded `.padding(.leading, 116)` that reserves the big bot's
 /// column, so neither fits `HarnessMetrics.riserHeight` (26 pt). What is shared with them is
 /// the *decision path* — every button here ends at the same
-/// `HookServer.shared.sendApprovalDecision(_:)` / `HookServer.shared.sendQuestionAnswers(_:)`
+/// `HookServer.shared.sendApprovalDecision(_:sessionId:)` / `HookServer.shared.sendQuestionAnswers(_:sessionId:)`
 /// call, via `VoiceHarnessModel.resolveApproval(_:)` / `resolveQuestion(_:)`. There is no
 /// second decision path, and the model reads the same `AppState.pendingApproval` /
-/// `pendingQuestion` slots the shipping views read, so the two can never disagree.
+/// `pendingQuestion` (the oldest pending of each) slots the shipping views read, so the two can never disagree.
 struct HarnessRiserStrip: View {
     @ObservedObject var model: VoiceHarnessModel
 
@@ -75,15 +75,15 @@ struct HarnessRiserStrip: View {
         }
         Spacer(minLength: 4)
         RiserButton("Deny", tint: Color(hex: "#8E939C"), filled: false) {
-            model.resolveApproval("deny")
+            model.resolveApproval("deny", sessionId: approval.sessionId)
         }
         RiserButton("Allow", tint: Color(hex: "#34D399"), filled: true) {
-            model.resolveApproval("allow")
+            model.resolveApproval("allow", sessionId: approval.sessionId)
         }
         // Codex rejects updatedPermissions, so "Always" is not offered — same rule as ApprovalView.
         if approval.pillId != "agent_codex" {
             RiserButton("Always", tint: Color(hex: "#8B5CF6"), filled: false) {
-                model.resolveApproval("always")
+                model.resolveApproval("always", sessionId: approval.sessionId)
             }
         }
     }

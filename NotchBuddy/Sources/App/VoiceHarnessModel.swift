@@ -174,24 +174,26 @@ final class VoiceHarnessModel: ObservableObject {
     var hasQuestion: Bool { appState.pendingQuestion != nil }
     var hasRiser: Bool { hasApproval || hasQuestion }
 
-    /// The payload the riser strip renders. `AppState` holds a single slot each, so at most
-    /// one of these is non-nil; the same `ApprovalView`/`QuestionView` model properties drive
+    /// The payload the riser strip renders. `AppState` exposes the oldest pending approval and
+    /// the oldest pending question; the same `ApprovalView`/`QuestionView` model properties drive
     /// the shipping views, so the strip can never disagree with them.
     var approval: ApprovalInfo? { appState.pendingApproval }
     var question: AskQuestion? { appState.pendingQuestion }
 
     /// Send an approval decision through the ONE existing path.
-    func resolveApproval(_ decision: String) {
-        HookServer.shared.sendApprovalDecision(decision)
+    /// `sessionId` is the session of the approval the strip displayed when the button was drawn.
+    func resolveApproval(_ decision: String, sessionId: String) {
+        HookServer.shared.sendApprovalDecision(decision, sessionId: sessionId)
         approvalDidResolve()
     }
 
     /// Send question answers through the ONE existing path
     /// (`AskQuestion.buildAnswers` → `HookServer.sendQuestionAnswers`).
     func resolveQuestion(_ selections: [[String]]) {
-        guard let question else { return }
-        let answers = AskQuestion.buildAnswers(questions: question.questions, selections: selections)
-        HookServer.shared.sendQuestionAnswers(answers)
+        // Question and session id come from the same snapshot, so the answers reach the session they were built for.
+        guard let pending = appState.oldestPendingQuestion else { return }
+        let answers = AskQuestion.buildAnswers(questions: pending.question.questions, selections: selections)
+        HookServer.shared.sendQuestionAnswers(answers, sessionId: pending.sessionId)
         approvalDidResolve()
     }
 

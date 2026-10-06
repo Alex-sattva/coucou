@@ -68,22 +68,27 @@ struct ApprovalView: View {
     var approval: ApprovalInfo? { state.pendingApproval }
 
     var body: some View {
+        // Bind the displayed (oldest) approval once per render: the buttons act on ITS session id,
+        // never on whatever is oldest at click time.
+        let current = approval
         ZStack {
             CardBackground(wash: .amber)
             VStack(alignment: .leading, spacing: 5) {
-                AgentWho(task: state.focusTask, label: "needs permission")
-                CodeBlock(text: approval?.command ?? approval?.tool ?? "…")
+                // A plain-terminal session has no pill: do not label it with whatever pill is focused.
+                AgentWho(task: current?.pillId.isEmpty == true ? nil : state.focusTask,
+                         label: current?.pillId.isEmpty == true ? "Claude Code needs permission" : "needs permission")
+                CodeBlock(text: current?.command ?? current?.tool ?? "…")
                 HStack(spacing: 8) {
                     SecondaryButton("Deny") {
-                        HookServer.shared.sendApprovalDecision("deny")
+                        if let id = current?.sessionId { HookServer.shared.sendApprovalDecision("deny", sessionId: id) }
                     }
                     PrimaryButton("Allow") {
-                        HookServer.shared.sendApprovalDecision("allow")
+                        if let id = current?.sessionId { HookServer.shared.sendApprovalDecision("allow", sessionId: id) }
                     }
                     // Codex rejects updatedPermissions, so "Always" is not offered
-                    if approval?.pillId != "agent_codex" {
+                    if current?.pillId != "agent_codex" {
                         SecondaryButton("Always") {
-                            HookServer.shared.sendApprovalDecision("always")
+                            if let id = current?.sessionId { HookServer.shared.sendApprovalDecision("always", sessionId: id) }
                         }
                     }
                 }
@@ -108,6 +113,8 @@ struct QuestionView: View {
     // Per-question "Other…" mode active
     @State private var showOther: [Bool] = []
     @FocusState private var otherFieldFocused: Bool
+    // Session whose question this card is showing (the oldest pending one)
+    @State private var shownSessionId: String? = nil
 
     var question: AskQuestion? { state.pendingQuestion }
 
@@ -134,7 +141,9 @@ struct QuestionView: View {
                                 .font(.system(size: 10))
                                 .foregroundColor(Color(hex: "#6B7079"))
                         }
-                        Button("Reply in terminal") { HookServer.shared.sendQuestionAsk() }
+                        Button("Reply in terminal") {
+                            if let id = state.oldestPendingQuestion?.sessionId { HookServer.shared.sendQuestionAsk(sessionId: id) }
+                        }
                             .buttonStyle(.plain)
                             .font(.system(size: 10))
                             .foregroundColor(Color(hex: "#6B7079"))
@@ -229,9 +238,16 @@ struct QuestionView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .onAppear { resetQuestionState() }
+        .onAppear {
+            shownSessionId = state.oldestPendingQuestion?.sessionId
+            resetQuestionState()
+        }
         .onChange(of: state.pendingQuestion) { _, _ in resetQuestionState() }
-        .onDisappear { HookServer.shared.releaseQuestionFD() }
+        .onChange(of: state.oldestPendingQuestion?.sessionId) { _, id in shownSessionId = id }
+        .onDisappear {
+            // Release only the question this card was showing; other sessions' questions stay held.
+            if let id = shownSessionId { HookServer.shared.releaseQuestionFD(sessionId: id) }
+        }
     }
 
     private func resetQuestionState() {
@@ -277,8 +293,11 @@ struct QuestionView: View {
     }
 
     private func sendAnswers(q: AskQuestion) {
+        // Answers were built for `q` (what the card displays); send them only to the session that
+        // still owns exactly that question.
+        guard let pending = state.oldestPendingQuestion, pending.question == q else { return }
         let answers = AskQuestion.buildAnswers(questions: q.questions, selections: selections)
-        HookServer.shared.sendQuestionAnswers(answers)
+        HookServer.shared.sendQuestionAnswers(answers, sessionId: pending.sessionId)
     }
 }
 

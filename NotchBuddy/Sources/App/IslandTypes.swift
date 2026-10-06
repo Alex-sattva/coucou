@@ -54,7 +54,20 @@ struct ApprovalInfo: Sendable {
     /// tool_input serialized to JSON with sortedKeys, "" if absent — used to match PostToolUse.
     var inputKey: String
     /// Pill that owns this approval: "integration_claude", "agent_cursor", or "agent_codex".
+    /// "" for a plain-terminal Claude Code session, which has no pill.
     var pillId: String
+    /// When the request arrived. The oldest pending request is the one the single-card views show.
+    var arrivedAt: Date = Date()
+}
+
+// MARK: - Pending question (AskUserQuestion held open, one per session)
+
+struct PendingQuestion: Equatable {
+    var sessionId: String
+    var question: AskQuestion
+    /// Same meaning as `ApprovalInfo.pillId` ("" for a plain-terminal session).
+    var pillId: String
+    var arrivedAt: Date = Date()
 }
 
 // MARK: - Pill badge (shown on pill edge when non-focused task has an alert)

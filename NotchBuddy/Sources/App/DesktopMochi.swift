@@ -441,10 +441,10 @@ final class DesktopMochiController {
 
     private func observeAlerts() {
         alertSubscription = Publishers.CombineLatest(
-            AppState.shared.$pendingApproval,
-            AppState.shared.$pendingQuestion
+            AppState.shared.$pendingApprovals,
+            AppState.shared.$pendingQuestions
         )
-        .map { a, q in a != nil || q != nil }
+        .map { a, q in !a.isEmpty || !q.isEmpty }
         .removeDuplicates()
         .dropFirst()
         .receive(on: DispatchQueue.main)

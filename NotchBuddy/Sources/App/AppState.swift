@@ -362,11 +362,25 @@ final class AppState: ObservableObject {
     // Chat conversation history
     @Published var chatHistory: [ChatMessage] = []
 
-    // Pending approval request from Claude Code hook
-    @Published var pendingApproval: ApprovalInfo? = nil
+    // Pending approval requests from Claude Code hooks, one per session id (several can wait at once).
+    // Written only by HookServer, which keeps the matching socket fds.
+    @Published var pendingApprovals: [String: ApprovalInfo] = [:]
 
-    // Pending AskUserQuestion from Claude Code hook
-    @Published var pendingQuestion: AskQuestion? = nil
+    // Pending AskUserQuestion requests, one per session id.
+    @Published var pendingQuestions: [String: PendingQuestion] = [:]
+
+    /// The approval that has waited longest. The single-card views (and the v1 harness riser)
+    /// show this one and must act on its `sessionId`.
+    var pendingApproval: ApprovalInfo? {
+        PendingOrder.oldest(pendingApprovals, arrivedAt: { $0.arrivedAt })?.item
+    }
+
+    /// The question that has waited longest, with its session id.
+    var oldestPendingQuestion: PendingQuestion? {
+        PendingOrder.oldest(pendingQuestions, arrivedAt: { $0.arrivedAt })?.item
+    }
+
+    var pendingQuestion: AskQuestion? { oldestPendingQuestion?.question }
 
     // Assistant layer: one session per hook session_id, beside the pill layer (`tasks`).
     @Published var sessionStore = AgentSessionStore()
