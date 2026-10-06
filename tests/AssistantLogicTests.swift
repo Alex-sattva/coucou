@@ -169,6 +169,35 @@ enum AssistantLogicTests {
         }
 
         print("")
+        print("AssistantStripGeometry")
+        do {
+            checkEq("0 subs: 56 each side", AssistantStripGeometry.compactWidth(notchWidth: 184, subs: 0), 296)
+            checkEq("1 sub: still 56", AssistantStripGeometry.compactWidth(notchWidth: 184, subs: 1), 296)
+            checkEq("3 subs: 3x26+26 = 104", AssistantStripGeometry.compactWidth(notchWidth: 184, subs: 3), 392)
+            checkEq("5 subs: 156", AssistantStripGeometry.compactWidth(notchWidth: 184, subs: 5), 496)
+            checkEq("7 subs: 5 shown + count slot = 6", AssistantStripGeometry.compactWidth(notchWidth: 184, subs: 7), 548)
+            let g = AssistantStripGeometry(islandWidth: 392, islandHeight: 32, notchWidth: 184, restingDiameter: 20)
+            checkEq("main diameter 20 x 1.25 = 25 (cap 28)", g.mainDiameter, 25)
+            checkEq("main centre 30 pt left of the notch", g.mainCentreX, 196 - 92 - 30)
+            checkEq("first sub 22 pt right of the notch", g.subCentreX(0), 196 + 92 + 22)
+            checkEq("subs spaced 26", g.subCentreX(2) - g.subCentreX(1), 26)
+            checkEq("sub diameter 0.68 x main", g.subDiameter, 25 * 0.68)
+            let small = AssistantStripGeometry(islandWidth: 296, islandHeight: 24, notchWidth: 80, restingDiameter: 18)
+            checkEq("short bar: capped at height - 4", small.mainDiameter, 20)
+        }
+
+        print("")
+        print("statusDotHex")
+        do {
+            checkEq("approval is amber", sess("a", phase: .approval).statusDotHex, "#F5A524")
+            checkEq("question is amber", sess("a", phase: .question).statusDotHex, "#F5A524")
+            checkEq("blocked is red", sess("a", phase: .blocked).statusDotHex, "#F87171")
+            checkEq("finished unseen is green", sess("a", phase: .finished).statusDotHex, "#34D399")
+            checkTrue("finished seen has no dot", sess("a", phase: .finished, seen: true).statusDotHex == nil)
+            checkTrue("working has no dot", sess("a", phase: .working).statusDotHex == nil)
+        }
+
+        print("")
         if failures == 0 {
             print("All tests passed.")
         } else {

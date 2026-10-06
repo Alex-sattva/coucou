@@ -91,3 +91,52 @@ enum SubSlotOrder {
         return (slots, recolour)
     }
 }
+
+/// Geometry of the quiet strip (compact island), in island coordinates (origin top-left).
+/// Values come from `design/prototype/assistant-multi-agent-prototype.html` (variant E).
+/// `restingDiameter` is `IslandRestingLayout.botDiameter`.
+struct AssistantStripGeometry: Equatable {
+    static let maxVisibleSubs = 5
+    static let subSpacing: CGFloat = 26
+    static let subFirstOffset: CGFloat = 22     // first sub centre, outside the notch's right edge
+    static let mainOffset: CGFloat = 30         // main centre, outside the notch's left edge
+    static let minSide: CGFloat = 56            // minimum width each side of the notch
+    static let subRatio: CGFloat = 0.68
+
+    let islandWidth: CGFloat
+    let islandHeight: CGFloat
+    let notchWidth: CGFloat
+    let restingDiameter: CGFloat
+
+    /// Slots drawn right of the notch: up to 5 subs, plus one slot for the "+N" count on overflow.
+    static func slotCount(subs: Int) -> Int {
+        min(max(0, subs), maxVisibleSubs) + (subs > maxVisibleSubs ? 1 : 0)
+    }
+
+    /// Compact island width = notch + 2 x max(56, slots x 26 + 26): symmetric, so the camera stays centred.
+    static func compactWidth(notchWidth: CGFloat, subs: Int) -> CGFloat {
+        notchWidth + 2 * max(minSide, CGFloat(slotCount(subs: subs)) * subSpacing + subSpacing)
+    }
+
+    /// Resting diameter x 1.25, capped at notch height - 4.
+    var mainDiameter: CGFloat { max(0, min(restingDiameter * 1.25, islandHeight - 4)) }
+    var subDiameter: CGFloat { mainDiameter * Self.subRatio }
+    var centreY: CGFloat { islandHeight / 2 }
+    var mainCentreX: CGFloat { islandWidth / 2 - notchWidth / 2 - Self.mainOffset }
+    func subCentreX(_ index: Int) -> CGFloat {
+        islandWidth / 2 + notchWidth / 2 + Self.subFirstOffset + CGFloat(index) * Self.subSpacing
+    }
+}
+
+extension AgentSession {
+    /// Colour of the small status dot next to a Mochi: amber = approval/question, red = blocked,
+    /// green = finished and not yet seen. nil = no dot.
+    var statusDotHex: String? {
+        switch phase {
+        case .approval, .question: return "#F5A524"
+        case .blocked: return "#F87171"
+        case .finished: return finishedSeen ? nil : "#34D399"
+        case .thinking, .working, .idle: return nil
+        }
+    }
+}
