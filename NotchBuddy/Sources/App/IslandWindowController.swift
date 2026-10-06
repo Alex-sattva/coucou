@@ -148,6 +148,7 @@ final class IslandWindowController: NSWindowController {
         startHotKeys()
         wireFSM()
         wireAssistantPanel()
+        OptionHoldMonitor.shared.start()
 
         // Make panel key whenever the prompt/chat view becomes active
         // (nonactivatingPanel never auto-becomes key, but TextField needs it)

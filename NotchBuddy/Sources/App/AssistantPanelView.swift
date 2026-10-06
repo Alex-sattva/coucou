@@ -15,6 +15,7 @@ struct AssistantPanelView: View {
     @ObservedObject var model: AssistantModel
     @ObservedObject var state: AppState
 
+    @ObservedObject private var voice = VoiceInput.shared
     @State private var hovering = false
     @State private var barText = ""
     @FocusState private var barFocused: Bool
@@ -77,6 +78,8 @@ struct AssistantPanelView: View {
             if !open { barText = ""; model.clearBarError() }
         }
         .onChange(of: barText) { _, _ in model.clearBarError() }
+        // The bar shows what the recogniser hears, live.
+        .onChange(of: voice.transcript) { _, text in barText = text }
         // The 8 s fold exists only while a finished card is on screen. Hover, a focused bar or an
         // open diff pause it (the key changes, so the wait restarts when they end).
         .task(id: foldKey(content: content, main: main)) {
@@ -121,7 +124,7 @@ struct AssistantPanelView: View {
 
     private func foldKey(content: AssistantPanelContent, main: AgentSession?) -> FoldKey? {
         guard case .finished = content, let main else { return nil }
-        if hovering || barFocused { return nil }
+        if hovering || barFocused || voice.isActive { return nil }
         return FoldKey(sessionId: main.id, attentionAt: main.attentionAt)
     }
 }
@@ -159,7 +162,7 @@ struct AssistantTopRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let session { AssistantAgentChip(session: session) }
-            AssistantMicButton()
+            AssistantMicButton(model: model)
         }
         .padding(.leading, AssistantPanelLayout.contentLeading)
         .padding(.trailing, 16)
@@ -207,18 +210,24 @@ struct AssistantAgentChip: View {
     }
 }
 
-/// Voice arrives in Step 11; until then the button is drawn but does nothing.
+/// Click to start listening, click again to stop and send. Red while the microphone is open.
 struct AssistantMicButton: View {
+    @ObservedObject var model: AssistantModel
+    @ObservedObject private var voice = VoiceInput.shared
+
     var body: some View {
-        Image(systemName: "mic.fill")
-            .font(.system(size: 12))
-            .foregroundColor(Color(hex: "#8E939C"))
-            .frame(width: 28, height: 28)
-            .background(Color.white.opacity(0.07))
-            .clipShape(Circle())
-            .opacity(0.6)
-            .allowsHitTesting(false)
-            .help("Voice is not available yet")
+        let on = voice.isActive
+        Button { model.toggleVoice() } label: {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 12))
+                .foregroundColor(on ? .white : Color(hex: "#8E939C"))
+                .frame(width: 28, height: 28)
+                .background(on ? Color(hex: "#F87171") : Color.white.opacity(0.07))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(on ? "Stop and send" : "Talk (or hold ⌥)")
+        .accessibilityLabel(on ? "Stop listening and send" : "Start listening")
     }
 }
 
@@ -230,16 +239,19 @@ struct AssistantBarField: View {
     @ObservedObject var model: AssistantModel
     @Binding var text: String
     var focused: FocusState<Bool>.Binding
+    @ObservedObject private var voice = VoiceInput.shared
 
     var body: some View {
         let folder = model.taskFolder
+        let placeholder = voice.isActive
+            ? "Listening…"
+            : folder.map { "New OpenCode task in \($0.workspace)…" } ?? AssistantBarLogic.noFolderCopy
         VStack(alignment: .leading, spacing: 1) {
-            TextField(folder.map { "New OpenCode task in \($0.workspace)…" } ?? AssistantBarLogic.noFolderCopy,
-                      text: $text)
+            TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 17))
                 .focused(focused)
-                .disabled(folder == nil)
+                .disabled(folder == nil || voice.isActive)
                 .onSubmit { model.submitTask(text) }
             if let error = model.barError {
                 Text(error)

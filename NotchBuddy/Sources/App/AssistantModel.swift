@@ -66,6 +66,8 @@ final class AssistantModel: ObservableObject {
     private var questions: [String: PendingQuestion] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var wasExpanded = false
+    /// The current voice session opened the panel itself (so it closes it again when nothing is sent).
+    private var voiceOpenedPanel = false
 
     private init() {
         // @Published emits on willSet: use the emitted values, never read the property back.
@@ -99,6 +101,13 @@ final class AssistantModel: ObservableObject {
                     self.questions = value
                     self.recompute(sessions: self.sessions)
                 }
+            }
+            .store(in: &cancellables)
+        // A voice error (permission off, recogniser unavailable) shows in the bar like any other.
+        VoiceInput.shared.$error
+            .compactMap { $0 }
+            .sink { [weak self] message in
+                MainActor.assumeIsolated { self?.barError = message }
             }
             .store(in: &cancellables)
         state.$mode
@@ -142,6 +151,7 @@ final class AssistantModel: ObservableObject {
     /// Esc, or the island folded while the panel was open. Remembers the current needs so the
     /// panel stays shut until something new needs the user.
     func dismiss() {
+        VoiceInput.shared.cancel()   // a closed panel never keeps the microphone open
         summoned = false
         selectedId = nil
         showsDiff = false
@@ -163,7 +173,7 @@ final class AssistantModel: ObservableObject {
     }
 
     /// The island must not fold on its own while the panel is open on something that needs the user.
-    var holdsIslandOpen: Bool { isOpen && !queue.isEmpty }
+    var holdsIslandOpen: Bool { isOpen && (!queue.isEmpty || VoiceInput.shared.isActive) }
 
     /// Whether the assistant panel draws `view` right now (`AssistantRouting`).
     func routesToPanel(_ view: IslandView) -> Bool {
@@ -227,6 +237,50 @@ final class AssistantModel: ObservableObject {
             }
             return
         }
+    }
+
+    // MARK: - The bar: voice
+
+    /// Opens the panel on the bar and starts listening. With no folder to run in, the bar is
+    /// disabled: show why instead of listening.
+    func startVoice() {
+        guard !VoiceInput.shared.isActive else { return }
+        guard taskFolder != nil else {
+            barError = AssistantBarLogic.noFolderCopy
+            summon()
+            return
+        }
+        voiceOpenedPanel = !isOpen
+        barError = nil
+        summon()
+        VoiceInput.shared.start()
+    }
+
+    /// Stops listening. `send`: the transcript goes through `submitTask` (same as Enter);
+    /// otherwise it is dropped. Nothing is ever sent without the user releasing or clicking.
+    func finishVoice(send: Bool) {
+        let voice = VoiceInput.shared
+        guard voice.isActive else { return }
+        let closeAfter = voiceOpenedPanel
+        guard send else {
+            voice.cancel()
+            if closeAfter { dismiss() }
+            return
+        }
+        Task { [weak self] in
+            let text = await voice.finish()
+            guard let self else { return }
+            if text.isEmpty {
+                if closeAfter { self.dismiss() }
+            } else {
+                self.submitTask(text)
+            }
+        }
+    }
+
+    /// The mic button: click to start, click again to stop and send.
+    func toggleVoice() {
+        if VoiceInput.shared.isActive { finishVoice(send: true) } else { startVoice() }
     }
 
     private func launchTask(prompt: String, model: String, cwd: String) {
