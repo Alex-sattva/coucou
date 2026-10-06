@@ -57,6 +57,9 @@ jobs:
       - name: Assistant logic tests
         run: bash scripts/test-assistant-logic.sh
 
+      - name: Assistant hand-off tests
+        run: bash scripts/test-assistant-handoff.sh
+
       - name: Pending requests tests
         run: bash scripts/test-pending-requests.sh
 
