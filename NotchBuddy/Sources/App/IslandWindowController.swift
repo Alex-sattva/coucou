@@ -16,6 +16,7 @@ final class IslandWindowController: NSWindowController {
     private var keyMonitor: Any?
     private var viewSubscription: AnyCancellable?
     private var sessionCountSubscription: AnyCancellable?
+    private var assistantOpenSubscription: AnyCancellable?
 
     // Confused recovery timer (set by handleDizzy)
     private var confusedRecoveryTimer: DispatchWorkItem?
@@ -146,6 +147,7 @@ final class IslandWindowController: NSWindowController {
         startLocalKeyMonitor()
         startHotKeys()
         wireFSM()
+        wireAssistantPanel()
 
         // Make panel key whenever the prompt/chat view becomes active
         // (nonactivatingPanel never auto-becomes key, but TextField needs it)
@@ -205,7 +207,14 @@ final class IslandWindowController: NSWindowController {
             self?.fsm.greetComplete()
         }
 
-        fsm.isHeldOpen = { AppState.shared.pendingApproval != nil || AppState.shared.pendingQuestion != nil }
+        // With agent sessions, the assistant panel decides: the island is held open while the panel is
+        // open on something that needs the user. Once the user dismissed it (Esc) a pending approval no
+        // longer pins the island, so it can fold; the request stays pending until it times out.
+        // Without sessions the shipping rule applies.
+        fsm.isHeldOpen = {
+            if !AppState.shared.sessionStore.sessions.isEmpty { return AssistantModel.shared.holdsIslandOpen }
+            return AppState.shared.pendingApproval != nil || AppState.shared.pendingQuestion != nil
+        }
         // Agent sessions keep the compact strip on screen; no session, no strip.
         fsm.keepsCompact = { !AppState.shared.sessionStore.sessions.isEmpty }
         // @Published emits on willSet: use the emitted store, not the property.
@@ -218,6 +227,49 @@ final class IslandWindowController: NSWindowController {
                 if prev == 0 && now > 0 { self.fsm.reveal() }
                 if prev > 0 && now == 0 { self.fsm.sessionsEnded() }
             }
+    }
+
+    // MARK: - Assistant panel open / close
+
+    /// The panel's open rule changed (`AssistantModel.isOpen`). Opening expands the island on the
+    /// panel; closing (Esc, a dismissal) folds it. Nothing here approves or answers anything.
+    private func wireAssistantPanel() {
+        assistantOpenSubscription = AssistantModel.shared.$isOpen
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated { self?.assistantOpenChanged(AssistantModel.shared.isOpen) }
+            }
+    }
+
+    private func assistantOpenChanged(_ open: Bool) {
+        if open {
+            if state.mode == .expanded {
+                // Already open on another view (settings, chat...): only a blocking need takes it over.
+                if !state.view.isAssistantPanel && AssistantModel.shared.hasBlockingNeed {
+                    state.view = .overview
+                }
+                return
+            }
+            fsm.openedExternally()
+            expand(to: .overview)
+        } else if state.mode == .expanded && state.view.isAssistantPanel {
+            collapse()
+        }
+    }
+
+    /// The user asks for the panel (click on the notch, shortcut). With no agent session there is
+    /// nothing for the panel to show, so callers keep their shipping behaviour.
+    /// Esc on the open panel: remember the current needs and fold. False when the panel is not showing.
+    private func dismissAssistantPanel() -> Bool {
+        guard state.mode == .expanded, state.view.isAssistantPanel, AssistantModel.shared.isOpen else { return false }
+        AssistantModel.shared.dismiss()   // closes the panel; assistantOpenChanged folds the island
+        return true
+    }
+
+    private func summonAssistant() {
+        AssistantModel.shared.summon()
+        islandPanel.makeKey()   // the bar field can take typing
     }
 
     // MARK: - 60 Hz polling loop
@@ -396,17 +448,28 @@ final class IslandWindowController: NSWindowController {
         case .toggleIsland:
             if state.mode == .expanded {
                 collapse()
+            } else if !state.sessionStore.sessions.isEmpty {
+                summonAssistant()
             } else {
                 islandPanel.makeKey()
                 expand(to: defaultView())
             }
 
         case .openChat:
-            islandPanel.makeKey()
-            expand(to: .prompt)
+            // With agent sessions the chat shortcut summons the assistant panel (its bar); the chat
+            // stays one click away on the header's bubble tab.
+            if !state.sessionStore.sessions.isEmpty {
+                summonAssistant()
+            } else {
+                islandPanel.makeKey()
+                expand(to: .prompt)
+            }
 
         case .goToAlert:
-            if state.pendingApproval != nil {
+            if state.pendingApproval != nil || state.pendingQuestion != nil,
+               !state.sessionStore.sessions.isEmpty {
+                summonAssistant()
+            } else if state.pendingApproval != nil {
                 islandPanel.makeKey()
                 expand(to: .approval)
             } else if state.pendingQuestion != nil {
@@ -510,6 +573,7 @@ final class IslandWindowController: NSWindowController {
         // ⎋ Escape — focused views (.onExitCommand) have first crack; fall back to collapse
         if event.keyCode == 53 && raw.isEmpty {
             let consumed = NSApp.sendAction(Selector(("cancelOperation:")), to: nil, from: nil)
+            if !consumed && dismissAssistantPanel() { return true }
             if !consumed && state.mode == .expanded && !state.isPinned {
                 collapse()
             }
@@ -582,6 +646,7 @@ final class IslandWindowController: NSWindowController {
             Task { @MainActor in
                 guard let self = self else { return }
                 if event.keyCode == 53 { // Escape
+                    if self.dismissAssistantPanel() { return }
                     if self.state.mode == .expanded && !self.state.isPinned {
                         self.collapse()
                     }
@@ -592,6 +657,9 @@ final class IslandWindowController: NSWindowController {
         // Hook server expand requests (alerts only)
         NotificationCenter.default.addObserver(forName: .hookExpand, object: nil, queue: .main) { [weak self] note in
             guard let self, let view = note.object as? IslandView else { return }
+            // The panel shows only while its open rule says so: after Esc, the same needs do not
+            // pop it open again (pill-based alerts used to force it).
+            if view.isAssistantPanel && !AssistantModel.shared.isOpen { return }
             self.fsm.openedExternally()
             self.expand(to: view)
         }
@@ -722,6 +790,8 @@ final class IslandWindowController: NSWindowController {
                 } else {
                     self.attachDragStart = nil
                     if hadPendingClick && self.state.mode != .expanded {
+                        // A click on the notch summons the assistant panel when agents exist.
+                        if !self.state.sessionStore.sessions.isEmpty { self.summonAssistant() }
                         if self.fsm.state == .home {
                             // FSM already thinks it's open (e.g. the view folded it): just reopen.
                             self.expand(to: self.defaultView())
@@ -963,7 +1033,8 @@ final class IslandWindowController: NSWindowController {
 
     func defaultView() -> IslandView {
         if state.pendingApproval != nil { return .approval }
-        return state.tasks.isEmpty ? .empty : .overview
+        // Agent sessions (even with no pill) open the assistant panel, never the empty state.
+        return state.tasks.isEmpty && state.sessionStore.sessions.isEmpty ? .empty : .overview
     }
 
     func baseMode() -> IslandMode {
