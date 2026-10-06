@@ -368,6 +368,27 @@ final class AppState: ObservableObject {
     // Pending AskUserQuestion from Claude Code hook
     @Published var pendingQuestion: AskQuestion? = nil
 
+    // Assistant layer: one session per hook session_id, beside the pill layer (`tasks`).
+    @Published var sessionStore = AgentSessionStore()
+
+    // Per-session FileDiffs (same 50 cap as `sessionDiffs`); cleared when the session ends or is pruned.
+    // Not @Published — session phase changes already trigger redraws.
+    var sessionFileDiffs: [String: [FileDiff]] = [:]
+
+    func appendSessionFileDiff(_ diff: FileDiff, for sessionId: String) {
+        var d = diff
+        d.id = nextDiffId
+        nextDiffId += 1
+        sessionFileDiffs[sessionId, default: []].append(d)
+        if let extra = sessionFileDiffs[sessionId]?.count, extra > 50 {
+            sessionFileDiffs[sessionId]?.removeFirst(extra - 50)
+        }
+    }
+
+    func clearSessionFileDiffs(for sessionId: String) {
+        sessionFileDiffs.removeValue(forKey: sessionId)
+    }
+
     // Per-pill flat list of FileDiffs, in order of reception.
     // Not @Published — steps[] changes already trigger redraws.
     var sessionDiffs: [String: [FileDiff]] = [:]

@@ -331,6 +331,10 @@ final class HookServer: @unchecked Sendable {
         let rawName = URL(fileURLWithPath: cwd).lastPathComponent
         let projectName = aliasProjectName(rawName.isEmpty ? "Session" : rawName)
 
+        // Assistant layer: every event with a session id feeds the session store, before the
+        // pill routing below (which ignores plain-terminal sessions). Additive: no pill state is touched.
+        feedSession(name: name, payload: payload)
+
         // Determine which pill this event belongs to.
         // coucou_agent must be lowercase, digits and hyphens, ≤ 24 chars.
         let rawAgent = payload["coucou_agent"] as? String ?? ""
@@ -529,6 +533,133 @@ final class HookServer: @unchecked Sendable {
         }
     }
 
+    // MARK: - Assistant layer: session feed
+
+    private var sessionPruneTimer: Timer? = nil
+
+    /// Hook session id (`session_id`, or Cursor's `conversation_id`); nil when the event has none.
+    private static func sessionId(of payload: [String: Any]) -> String? {
+        for key in ["session_id", "conversation_id"] {
+            if let id = payload[key] as? String, !id.isEmpty { return id }
+        }
+        return nil
+    }
+
+    private static func sessionKind(of payload: [String: Any]) -> AgentKind {
+        switch payload["coucou_agent"] as? String ?? "" {
+        case "codex":       return .codex
+        case "opencode":    return .openCode
+        case "gemini":      return .gemini
+        case "antigravity": return .antigravity
+        default: break
+        }
+        if validateAgent(payload["coucou_agent"] as? String ?? "") != nil { return .other }
+        let bundleId = payload["bundle_id"] as? String ?? ""
+        if bundleId.lowercased() == "com.todesktop.230313mzl4w4u92" { return .cursor }
+        return .claudeCode
+    }
+
+    /// Applies one session event to `AppState.sessionStore` and logs a phase change.
+    @MainActor
+    private func applySession(_ event: SessionEvent, payload: [String: Any]) {
+        guard let sessionId = Self.sessionId(of: payload) else { return }
+        let state = AppState.shared
+        let cwd = payload["cwd"] as? String ?? ""
+        let workspace = URL(fileURLWithPath: cwd).lastPathComponent
+        let before = state.sessionStore.sessions[sessionId]?.phase
+
+        var store = state.sessionStore
+        store.apply(event, sessionId: sessionId, kind: Self.sessionKind(of: payload), cwd: cwd,
+                    colorHex: IslandConst.colorForProject(workspace.isEmpty ? "Session" : workspace),
+                    now: Date())
+        if store != state.sessionStore { state.sessionStore = store }
+
+        let after = store.sessions[sessionId]?.phase
+        if before != after {
+            nbLog("session \(sessionId.prefix(8)) [\(store.sessions[sessionId]?.workspace ?? workspace)] "
+                  + "\(before?.rawValue ?? "none") -> \(after?.rawValue ?? "ended") (\(sessionCount(store)) live)")
+        }
+        if case .end = event {
+            state.clearSessionFileDiffs(for: sessionId)
+        }
+        updateSessionPruneTimer()
+    }
+
+    private func sessionCount(_ store: AgentSessionStore) -> Int { store.sessions.count }
+
+    /// Maps a hook event name to a SessionEvent. SubagentStart/Stop and unknown names map to nothing.
+    @MainActor
+    private func feedSession(name: String, payload: [String: Any]) {
+        guard Self.sessionId(of: payload) != nil else { return }
+        let tool = payload["tool_name"] as? String ?? ""
+        let input = payload["tool_input"] as? [String: Any] ?? [:]
+        switch name {
+        case "SessionStart":
+            applySession(.start, payload: payload)
+        case "SessionEnd":
+            applySession(.end, payload: payload)
+        case "UserPromptSubmit":
+            applySession(.prompt(payload["prompt"] as? String ?? ""), payload: payload)
+        case "PreToolUse":
+            // AskUserQuestion is reported by the dedicated --ask path (questionAsked).
+            guard tool != "AskUserQuestion" else { return }
+            applySession(.toolStart(step: frenchStep(tool: tool.isEmpty ? "Tool" : tool, input: input)),
+                         payload: payload)
+        case "PostToolUse":
+            if let diffSession = Self.sessionId(of: payload),
+               let diff = buildFileDiff(tool: tool, input: input, pillId: diffSession) {
+                AppState.shared.appendSessionFileDiff(diff, for: diffSession)
+            }
+            applySession(.toolEnd, payload: payload)
+        case "PostToolUseFailure":
+            applySession(.toolFailed(step: tool.isEmpty ? "failed" : frenchStep(tool: tool, input: input)),
+                         payload: payload)
+        case "Notification":
+            applySession(.notification(payload["message"] as? String ?? ""), payload: payload)
+        case "Stop":
+            let raw = (payload["last_assistant_message"] as? String) ?? (payload["message"] as? String) ?? ""
+            let line = DiffEngine.toOneLine(raw)
+            applySession(.stop(finalLine: line.isEmpty ? nil : line), payload: payload)
+        case "StopFailure":
+            applySession(.stopFailure, payload: payload)
+        case "Interrupt":
+            applySession(.interrupt, payload: payload)
+        default:
+            break
+        }
+    }
+
+    /// 60 s prune of sessions idle for 15 min. The timer exists only while a session does
+    /// (0 % CPU when nothing is running).
+    @MainActor
+    private func updateSessionPruneTimer() {
+        let state = AppState.shared
+        if state.sessionStore.sessions.isEmpty {
+            sessionPruneTimer?.invalidate()
+            sessionPruneTimer = nil
+            return
+        }
+        guard sessionPruneTimer == nil else { return }
+        sessionPruneTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pruneSessions() }
+        }
+    }
+
+    @MainActor
+    private func pruneSessions() {
+        let state = AppState.shared
+        var store = state.sessionStore
+        store.prune(now: Date(), idleFor: 15 * 60)
+        if store != state.sessionStore {
+            for id in state.sessionStore.sessions.keys where store.sessions[id] == nil {
+                state.clearSessionFileDiffs(for: id)
+                nbLog("session \(id.prefix(8)) pruned (idle)")
+            }
+            state.sessionStore = store
+        }
+        updateSessionPruneTimer()
+    }
+
     // MARK: - Agent validation + dynamic pill
 
     /// Validates a coucou_agent name: lowercase, digits and hyphens, 1–24 chars.
@@ -634,6 +765,11 @@ final class HookServer: @unchecked Sendable {
                 close(fd)
             }
             return
+        }
+
+        // Assistant layer: the session is waiting on a permission (AskUserQuestion has its own path).
+        if (payload["tool_name"] as? String) != "AskUserQuestion" {
+            applySession(.approvalRequested, payload: payload)
         }
 
         // Determine which workspace pill owns the request.
@@ -800,6 +936,10 @@ final class HookServer: @unchecked Sendable {
         #else
         let isCodexRequest = false
         #endif
+        // Assistant layer: the session is waiting on an answer.
+        if isCodexRequest || Self.validateAgent(rawAgent) == nil {
+            applySession(.questionAsked, payload: payload)
+        }
         let pillId: String
         if isCodexRequest {
             pillId = "agent_codex"
