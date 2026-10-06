@@ -52,6 +52,8 @@ struct SettingsView: View {
     @State private var showCodexDiff: Bool = false
     @State private var pendingCodexJSON: String = ""
     @State private var codexPendingInstall: Bool = true
+
+    @State private var opencodePluginInstalled: Bool = HookServer.opencodeHooksInstalled()
     #endif
 
     // Multi-provider chat keys
@@ -59,6 +61,7 @@ struct SettingsView: View {
     @State private var openAIKey: String  = KeychainStore.shared.get("openai-api-key") ?? ""
     @State private var ollamaURL:    String = AppState.shared.ollamaServerURL
     @State private var lmstudioURL:  String = AppState.shared.lmstudioServerURL
+    @State private var opencodeModel: String = AppState.shared.opencodeChatModel
     @State private var connectingOllama:    Bool = false
     @State private var connectingLMStudio:  Bool = false
 
@@ -499,6 +502,23 @@ struct SettingsView: View {
             .padding(6)
         }
 
+        GroupBox("OpenCode Plugin") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(opencodePluginInstalled
+                     ? "Plugin installed — restart OpenCode to activate"
+                     : "~/.config/opencode/plugins/coucou.ts")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(.secondary)
+                HStack(spacing: 10) {
+                    Button("Install plugin") { installOpencodePlugin() }
+                        .buttonStyle(.borderedProminent)
+                    Button("Uninstall") { uninstallOpencodePlugin() }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .padding(6)
+        }
+
         GroupBox("Plan usage") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Shows your Claude plan usage (5-hour and weekly limits) in the notch header. Coucou adds a status line relay to ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.")
@@ -712,6 +732,74 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+
+                Divider()
+
+                // ── OpenCode (headless CLI) ───────────────────────────────────
+                HStack(spacing: 8) {
+                    Circle().fill(Color(hex: "#FF6A3D")).frame(width: 8, height: 8)
+                    Text("OpenCode").font(.system(size: 12, weight: .semibold))
+                    Text(OpenCodeChat.cliURL() != nil ? "CLI found" : "CLI not found")
+                        .font(.system(size: 10))
+                        .foregroundColor(OpenCodeChat.cliURL() != nil
+                            ? Color(hex: "#22C55E") : Color(hex: "#F4505E"))
+                }
+                Text("Answers island chat via `opencode run`. Uses your OpenCode auth — no key here.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                // Live model list: fetch → per-model enable toggles.
+                if let models = state.fetchedProviderModels[.opencode] {
+                    Text("Models (\(models.count)) — toggle to enable/disable in the picker:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(models, id: \.id) { m in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        Text(m.label).font(.system(size: 12))
+                                        Text(m.id)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: Binding(
+                                        get: { !state.disabledOpencodeModels.contains(m.id) },
+                                        set: { on in
+                                            if on { state.disabledOpencodeModels.remove(m.id) }
+                                            else {
+                                                state.disabledOpencodeModels.insert(m.id)
+                                                if state.opencodeChatModel == m.id,
+                                                   let first = models.first(where: { !state.disabledOpencodeModels.contains($0.id) && $0.id != m.id }) {
+                                                    state.opencodeChatModel = first.id
+                                                }
+                                            }
+                                        }
+                                    ))
+                                    .toggleStyle(.switch)
+                                    .labelsHidden()
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 220)
+                    Button("Refresh list") { state.fetchedProviderModels[.opencode] = nil; state.fetchModelsIfNeeded(for: .opencode) }
+                        .buttonStyle(.bordered)
+                } else if state.loadingProviderModels.contains(.opencode) {
+                    Text("Loading OpenCode models…").font(.system(size: 11)).foregroundColor(.secondary)
+                } else {
+                    if let err = state.providerModelFetchError[.opencode] {
+                        Text(err).font(.system(size: 11)).foregroundColor(Color(hex: "#F4505E"))
+                    }
+                    Button("Load models") { state.fetchModelsIfNeeded(for: .opencode) }
+                        .buttonStyle(.borderedProminent)
+                }
+                TextField("Model (provider/model)", text: $opencodeModel)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: opencodeModel) { _, value in
+                        state.opencodeChatModel = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
             }
             .padding(.vertical, 4)
         }
@@ -1038,6 +1126,22 @@ struct SettingsView: View {
         }
     }
 
+    private func installOpencodePlugin() {
+        do {
+            try HookServer.shared.installOpencodePlugin()
+            opencodePluginInstalled = true
+            statusMessage = "✓ OpenCode plugin installed in ~/.config/opencode/plugins/coucou.ts — restart OpenCode to activate."
+        } catch {
+            statusMessage = "❌ \(error.localizedDescription)"
+        }
+    }
+
+    private func uninstallOpencodePlugin() {
+        HookServer.shared.uninstallOpencodePlugin()
+        opencodePluginInstalled = false
+        statusMessage = "✓ OpenCode plugin removed."
+    }
+
     private func installStatusLine() {
         do {
             pendingStatusLineJSON = try HookServer.shared.previewStatusLine(install: true)
@@ -1199,15 +1303,19 @@ struct SettingsView: View {
             if def.id == "agent_gemini"        && !HookServer.geminiHooksInstalled()  { return "Hooks not installed" }
             if def.id == "agent_antigravity"   && !HookServer.agyHooksInstalled()    { return "Hooks not installed" }
             if def.id == "agent_codex"         && !HookServer.codexHooksInstalled()  { return "Hooks not installed" }
+            if def.id == "agent_opencode"      && !HookServer.opencodeHooksInstalled() { return "Plugin not installed" }
             #endif
             if def.category == .ai {
-                if let provider = ChatProvider(pillID: def.id), provider.isLocal {
-                    let url = provider == .ollama ? state.ollamaServerURL : state.lmstudioServerURL
-                    if url.isEmpty { return "Not connected" }
-                } else {
-                    let keyId = def.id == "ai_anthropic" ? "anthropic-api-key"
-                               : def.id == "ai_google"    ? "google-api-key" : "openai-api-key"
-                    if KeychainStore.shared.get(keyId) == nil { return "Key not configured" }
+                if let provider = ChatProvider(pillID: def.id) {
+                    if provider == .opencode { return nil }  // CLI engine — no key needed
+                    if provider.isLocal {
+                        let url = provider == .ollama ? state.ollamaServerURL : state.lmstudioServerURL
+                        if url.isEmpty { return "Not connected" }
+                    } else {
+                        let keyId = def.id == "ai_anthropic" ? "anthropic-api-key"
+                                   : def.id == "ai_google"    ? "google-api-key" : "openai-api-key"
+                        if KeychainStore.shared.get(keyId) == nil { return "Key not configured" }
+                    }
                 }
             }
             return nil

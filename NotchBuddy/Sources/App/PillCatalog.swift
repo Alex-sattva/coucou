@@ -37,6 +37,7 @@ struct PillDefinition {
         case "integration_claude": return "Claude Code"
         case "agent_cursor":       return "Cursor"
         case "agent_codex":        return "Codex"
+        case "agent_opencode":     return "OpenCode"
         default:                   return "Agent"
         }
     }
@@ -56,6 +57,8 @@ enum PillCatalog {
               category: .workspace, subtitle: "Integration",  source: .agent,  githubOnly: true),
         .init(id: "agent_codex",         name: "Codex",       color: "#2DD4BF",
               category: .workspace, subtitle: "Integration",  source: .agent,  githubOnly: true),
+        .init(id: "agent_opencode",      name: "OpenCode",    color: "#FF6A3D",
+              category: .workspace, subtitle: "Integration",  source: .agent,  githubOnly: true),
         // ── Agents ───────────────────────────────────────────────────────────
         .init(id: "agent_gemini",        name: "Gemini CLI",  color: "#8AB4F8",
               category: .agent,     subtitle: "Agent",        source: .agent,  githubOnly: true),
@@ -69,6 +72,8 @@ enum PillCatalog {
         .init(id: "ai_ollama",           name: "Ollama",      color: ChatProvider.ollama.accentHex,
               category: .ai,        subtitle: "Chat",         source: .n8n),
         .init(id: "ai_lmstudio",         name: "LM Studio",   color: ChatProvider.lmstudio.accentHex,
+              category: .ai,        subtitle: "Chat",         source: .n8n),
+        .init(id: "ai_opencode",          name: "OpenCode",    color: ChatProvider.opencode.accentHex,
               category: .ai,        subtitle: "Chat",         source: .n8n),
         // ── Services ─────────────────────────────────────────────────────────
         .init(id: "integration_resend",  name: "Resend",      color: "#22C55E",

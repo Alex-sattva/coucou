@@ -1346,15 +1346,15 @@ struct ModelPickerView: View {
         .padding(14)
         .background(Color(hex: "#16171B"))
         .onAppear {
-            // Force-refresh local providers every time the picker opens
-            if state.chatProvider.isLocal {
+            // Force-refresh local + OpenCode providers every time the picker opens
+            if state.chatProvider.isLocal || state.chatProvider == .opencode {
                 state.fetchedProviderModels[state.chatProvider] = nil
                 state.providerModelFetchError[state.chatProvider] = nil
             }
             state.fetchModelsIfNeeded(for: state.chatProvider)
         }
         .onChange(of: state.chatProvider) { _, provider in
-            if provider.isLocal {
+            if provider.isLocal || provider == .opencode {
                 state.fetchedProviderModels[provider] = nil
                 state.providerModelFetchError[provider] = nil
             }
@@ -1379,9 +1379,18 @@ struct ModelPickerView: View {
                 .foregroundColor(Color(hex: "#8A8F98"))
                 .padding(.vertical, 4)
         } else if let models = state.fetchedProviderModels[state.chatProvider] {
+            let visible = state.chatProvider == .opencode
+                ? models.filter { !state.disabledOpencodeModels.contains($0.id) }
+                : models
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(models, id: \.id) { model in
+                    if visible.isEmpty {
+                        Text("All models disabled — re-enable some in Settings → Local models → OpenCode.")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "#8A8F98"))
+                            .padding(.vertical, 4)
+                    }
+                    ForEach(visible, id: \.id) { model in
                         Button {
                             switch state.chatProvider {
                             case .anthropic: state.claudeModel = model.id
@@ -1389,6 +1398,7 @@ struct ModelPickerView: View {
                             case .openai:    state.openAIChatModel = model.id
                             case .ollama:    state.ollamaChatModel = model.id
                             case .lmstudio:  state.lmstudioChatModel = model.id
+                            case .opencode:  state.opencodeChatModel = model.id
                             }
                             isPresented = false
                             SoundEngine.shared.play("blip")
@@ -1609,6 +1619,12 @@ struct IntegrationCardView: View {
             #endif
         case "agent_cursor", "agent_codex":
             return false  // coming soon
+        case "agent_opencode":
+            #if !APPSTORE
+            return HookServer.opencodeHooksInstalled()
+            #else
+            return false
+            #endif
         case "integration_music":
             #if !APPSTORE
             return true  // Apple Music is always installed on macOS
@@ -1620,6 +1636,7 @@ struct IntegrationCardView: View {
         case "ai_openai":     return KeychainStore.shared.get("openai-api-key")    != nil
         case "ai_ollama":     return !AppState.shared.ollamaServerURL.isEmpty
         case "ai_lmstudio":   return !AppState.shared.lmstudioServerURL.isEmpty
+        case "ai_opencode":   return true  // headless CLI — no key or server needed
         case "integration_resend":  return KeychainStore.shared.get("resend-api-key") != nil
         case "integration_n8n":     return KeychainStore.shared.get("n8n-api-key")    != nil
         case "integration_vercel":  return KeychainStore.shared.get("vercel-token")   != nil
@@ -1735,9 +1752,11 @@ struct IntegrationCardView: View {
                    : nil
         if let err = svcErr { return err }
         let isHooks = task.id == "agent_gemini" || task.id == "agent_antigravity"
+        let isPlugin = task.id == "agent_opencode"
         let isAI    = ChatProvider(pillID: task.id) != nil
         if isConfigured {
             if isHooks { return "Hooks installed" }
+            if isPlugin { return "Plugin installed" }
             if isAI {
                 let provider = ChatProvider(pillID: task.id)!
                 if provider.isLocal {
@@ -1749,13 +1768,15 @@ struct IntegrationCardView: View {
                 case "ai_anthropic": model = appState.claudeModel
                 case "ai_google":    model = appState.googleChatModel
                 case "ai_openai":    model = appState.openAIChatModel
+                case "ai_opencode":  model = appState.opencodeChatModel
                 default:             model = ""
                 }
-                return "Key configured · \(model)"
+                return task.id == "ai_opencode" ? "CLI · \(model)" : "Key configured · \(model)"
             }
             return "Connected · loading…"
         } else {
             if isHooks { return "Hooks not installed" }
+            if isPlugin { return "Plugin not installed" }
             if isAI {
                 let provider = ChatProvider(pillID: task.id)!
                 return provider.isLocal ? "Not connected" : "Key not configured"

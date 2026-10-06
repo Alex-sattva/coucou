@@ -109,11 +109,23 @@ final class AppState: ObservableObject {
     @Published var lmstudioChatModel: String = ChatProvider.lmstudio.defaultModel {
         didSet { UserDefaults.standard.set(lmstudioChatModel, forKey: "lmstudioChatModel") }
     }
+    @Published var opencodeChatModel: String = ChatProvider.opencode.defaultModel {
+        didSet { UserDefaults.standard.set(opencodeChatModel, forKey: "opencodeChatModel") }
+    }
     @Published var ollamaServerURL: String = "" {
         didSet { UserDefaults.standard.set(ollamaServerURL, forKey: "ollamaServerURL") }
     }
     @Published var lmstudioServerURL: String = "" {
         didSet { UserDefaults.standard.set(lmstudioServerURL, forKey: "lmstudioServerURL") }
+    }
+
+    /// OpenCode models the user disabled in Settings (hidden from the picker). Persisted.
+    @Published var disabledOpencodeModels: Set<String> = [] {
+        didSet {
+            if let d = try? JSONEncoder().encode(Array(disabledOpencodeModels)) {
+                UserDefaults.standard.set(d, forKey: "disabledOpencodeModels")
+            }
+        }
     }
 
     // The always-on workspace pill (default: VS Code). Persisted.
@@ -165,6 +177,29 @@ final class AppState: ObservableObject {
             }
             return
         }
+        // OpenCode: live catalog via private `opencode serve` + GET /api/model
+        if provider == .opencode {
+            loadingProviderModels.insert(provider)
+            providerModelFetchError.removeValue(forKey: provider)
+            Task {
+                do {
+                    let models = try await OpenCodeChat.fetchModels()
+                    fetchedProviderModels[provider] = models
+                    // Clamp the saved model to the live catalog if it vanished.
+                    if !models.contains(where: { $0.id == opencodeChatModel }),
+                       !disabledOpencodeModels.contains(opencodeChatModel) {
+                        let first = models.first(where: { !disabledOpencodeModels.contains($0.id) })?.id
+                            ?? models.first!.id
+                        opencodeChatModel = first
+                    }
+                } catch {
+                    providerModelFetchError[provider] = (error as? LocalizedError)?.errorDescription
+                        ?? "Could not load OpenCode models."
+                }
+                loadingProviderModels.remove(provider)
+            }
+            return
+        }
         // Remote providers: require API key
         guard let apiKey = KeychainStore.shared.get(provider.keychainKey), !apiKey.isEmpty else {
             providerModelFetchError[provider] = "No API key — add it in Settings."
@@ -178,7 +213,7 @@ final class AppState: ObservableObject {
             case .anthropic: models = await ClaudeService.fetchModels(apiKey: apiKey)
             case .google:    models = await ClaudeService.fetchGoogleModels(apiKey: apiKey)
             case .openai:    models = await ClaudeService.fetchOpenAIModels(apiKey: apiKey)
-            case .ollama, .lmstudio: models = []  // handled above
+            case .ollama, .lmstudio, .opencode: models = []  // handled above / no remote list
             }
             loadingProviderModels.remove(provider)
             if models.isEmpty {
@@ -198,7 +233,7 @@ final class AppState: ObservableObject {
                     if !models.contains(where: { $0.id == openAIChatModel }) {
                         openAIChatModel = models.first(where: { $0.id.contains("mini") })?.id ?? models.first!.id
                     }
-                case .ollama, .lmstudio: break
+                case .ollama, .lmstudio, .opencode: break
                 }
             }
         }
@@ -212,6 +247,7 @@ final class AppState: ObservableObject {
         case .openai:    return openAIChatModel
         case .ollama:    return ollamaChatModel
         case .lmstudio:  return lmstudioChatModel
+        case .opencode:  return opencodeChatModel
         }
     }
 
@@ -416,6 +452,9 @@ final class AppState: ObservableObject {
         if let v = ud.string(forKey: "openAIChatModel"), !v.isEmpty { openAIChatModel = v }
         if let v = ud.string(forKey: "ollamaChatModel"), !v.isEmpty { ollamaChatModel = v }
         if let v = ud.string(forKey: "lmstudioChatModel"), !v.isEmpty { lmstudioChatModel = v }
+        if let v = ud.string(forKey: "opencodeChatModel"), !v.isEmpty { opencodeChatModel = v }
+        if let d = ud.data(forKey: "disabledOpencodeModels"),
+           let a = try? JSONDecoder().decode([String].self, from: d) { disabledOpencodeModels = Set(a) }
         if let v = ud.string(forKey: "ollamaServerURL"), !v.isEmpty { ollamaServerURL = v }
         if let v = ud.string(forKey: "lmstudioServerURL"), !v.isEmpty { lmstudioServerURL = v }
         // Migrate old 60s default → 15s

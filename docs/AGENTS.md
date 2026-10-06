@@ -99,9 +99,49 @@ A **declared pill** is a catalog entry (`PillCatalog.swift`) that has been enabl
 
 A catalog pill that is not checked in Settings behaves like any other agent: it gets an automatic pill when a session starts, and that pill is removed when the session ends.
 
-The GitHub build exposes Gemini CLI (`agent_gemini`) and Antigravity (`agent_antigravity`) in Settings → Active pills. Cursor (`agent_cursor`) and Codex (`agent_codex`, GitHub build only) are there too — their pills can be declared and set as the main pill; session support is coming in a future version.
+The GitHub build exposes Gemini CLI (`agent_gemini`) and Antigravity (`agent_antigravity`) in Settings → Active pills. Cursor (`agent_cursor`) and Codex (`agent_codex`, GitHub build only) are there too — their pills can be declared and set as the main pill; session support is coming in a future version. OpenCode (`agent_opencode`, GitHub build only) is declared the same way — install the plugin below and enable it in Settings → Active pills.
 
 ## Real-world examples
+
+### OpenCode (macOS / Linux / Windows)
+
+Coucou ships an OpenCode plugin at `opencode/coucou.ts` in this repo. It maps
+OpenCode events to canonical Coucou events (`session.created` → `SessionStart`,
+`chat.message` → `UserPromptSubmit`, `tool.execute.before/after` →
+`PreToolUse`/`PostToolUse`, `session.idle` → `Stop`, `session.deleted` →
+`SessionEnd`, `session.error` → `Notification`/`StopFailure`) and forwards them
+with `coucou_agent: "opencode"`, so OpenCode sessions get their own pill.
+Every send is fire-and-forget — the plugin never blocks the agent, and silently
+no-ops when Coucou (or its relay) is not installed.
+
+Install — one click in Coucou: **Settings → OpenCode Plugin → Install plugin**
+(writes the bundled plugin to `~/.config/opencode/plugins/coucou.ts`, backing up
+any existing file). Manual fallback (global, all projects):
+
+```sh
+mkdir -p ~/.config/opencode/plugins
+cp opencode/coucou.ts ~/.config/opencode/plugins/coucou.ts
+```
+
+Or per-project: copy it to `.opencode/plugins/coucou.ts` in your project.
+Restart OpenCode, then enable **OpenCode** in Coucou's Settings → Active pills.
+
+Like Gemini/Antigravity, `PermissionRequest` is not supported for OpenCode:
+approval cards are Claude Code / Codex only.
+
+**Island chat engine** — OpenCode can also *answer* the island directly. Pick
+**OpenCode** in the island's model picker (or tap the OpenCode AI pill): chat is
+answered headlessly via `opencode run --format json --model <model> <prompt>`
+(`OpenCodeChat.swift`), reusing your OpenCode auth — no API key in Coucou.
+Configure the model in **Settings → Local models → OpenCode**; the switch is
+persisted (`chatProvider` / `opencodeChatModel` in UserDefaults).
+ The model list is fetched automatically: live catalog from a private
+ `opencode serve` + `GET /api/model` first (respects enabled state), falling
+ back to OpenCode's own disk cache (`~/.cache/opencode/models.json`,
+ providers `opencode` + `opencode-go`) when the live call is empty. In
+ Settings each model has an enable/disable toggle (persisted as
+ `disabledOpencodeModels`); disabled models are hidden from the island
+ picker, and the typed `provider/model` field stays as the escape hatch.
 
 ### Gemini CLI (macOS)
 

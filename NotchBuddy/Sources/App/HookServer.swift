@@ -1498,6 +1498,43 @@ final class HookServer: @unchecked Sendable {
         return json.contains("nb-hook")
     }
 
+    private static var opencodePluginTS: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/opencode/plugins/coucou.ts")
+    }
+    private static var opencodePluginJS: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/opencode/plugins/coucou.js")
+    }
+
+    /// True when the Coucou OpenCode plugin is installed (global plugins dir).
+    static func opencodeHooksInstalled() -> Bool {
+        FileManager.default.fileExists(atPath: opencodePluginTS.path) ||
+        FileManager.default.fileExists(atPath: opencodePluginJS.path)
+    }
+
+    /// Installs the bundled OpenCode plugin (`opencode/coucou.ts`, embedded in the
+    /// app as `opencodePluginSource`) to `~/.config/opencode/plugins/coucou.ts`.
+    func installOpencodePlugin() throws {
+        let url = Self.opencodePluginTS
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        // Back up an existing user plugin before overwriting.
+        if FileManager.default.fileExists(atPath: url.path) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd-HHmm"
+            let stamp = formatter.string(from: Date())
+            let backupURL = url.deletingLastPathComponent()
+                .appendingPathComponent("coucou.ts.bak-\(stamp)")
+            try? FileManager.default.copyItem(at: url, to: backupURL)
+        }
+        try opencodePluginSource.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Removes the Coucou OpenCode plugin from the global plugins dir.
+    func uninstallOpencodePlugin() {
+        try? FileManager.default.removeItem(at: Self.opencodePluginTS)
+        try? FileManager.default.removeItem(at: Self.opencodePluginJS)
+    }
+
     // MARK: Gemini CLI – preview / write
 
     private var _pendingGeminiData: Data?

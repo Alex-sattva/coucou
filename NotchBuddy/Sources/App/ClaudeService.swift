@@ -269,6 +269,10 @@ final class ClaudeService {
     func chatOpenAICompatible(query: String, context: PromptContext?, state: AppState) async {
         let provider = state.chatProvider
         guard provider != .anthropic else { return }
+        if provider == .opencode {
+            await OpenCodeChat.chat(query: query, context: context, state: state)
+            return
+        }
 
         let baseURL: String
         if provider == .ollama {
@@ -279,7 +283,7 @@ final class ClaudeService {
             switch provider {
             case .google:  baseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
             case .openai:  baseURL = "https://api.openai.com/v1"
-            case .anthropic, .ollama, .lmstudio: baseURL = ""
+            case .anthropic, .ollama, .lmstudio, .opencode: baseURL = ""
             }
         }
 
