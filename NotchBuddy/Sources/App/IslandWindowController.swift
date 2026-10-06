@@ -15,6 +15,7 @@ final class IslandWindowController: NSWindowController {
     private var frameTimer: Timer?
     private var keyMonitor: Any?
     private var viewSubscription: AnyCancellable?
+    private var sessionCountSubscription: AnyCancellable?
 
     // Confused recovery timer (set by handleDizzy)
     private var confusedRecoveryTimer: DispatchWorkItem?
@@ -205,6 +206,18 @@ final class IslandWindowController: NSWindowController {
         }
 
         fsm.isHeldOpen = { AppState.shared.pendingApproval != nil || AppState.shared.pendingQuestion != nil }
+        // Agent sessions keep the compact strip on screen; no session, no strip.
+        fsm.keepsCompact = { !AppState.shared.sessionStore.sessions.isEmpty }
+        // @Published emits on willSet: use the emitted store, not the property.
+        sessionCountSubscription = state.$sessionStore
+            .map { $0.sessions.count }
+            .scan((0, 0)) { ($0.1, $1) }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] prev, now in
+                guard let self else { return }
+                if prev == 0 && now > 0 { self.fsm.reveal() }
+                if prev > 0 && now == 0 { self.fsm.sessionsEnded() }
+            }
     }
 
     // MARK: - 60 Hz polling loop
@@ -1021,7 +1034,8 @@ final class IslandWindowController: NSWindowController {
         let panelH = window?.frame.height ?? 320
         let panelW = window?.frame.width  ?? 720
         let (islandW, fixedH) = islandSize(mode: s.mode, view: s.view,
-                                            progress: s.uploadProgress, nw: notchW, nh: notchH)
+                                            progress: s.uploadProgress, nw: notchW, nh: notchH,
+                                            sessionCount: s.sessionStore.sessions.count)
         // Chat view resizes dynamically — must match IslandContainer.chatPromptHeight
         let islandH: CGFloat
         if s.mode == .expanded && s.view == .prompt {
@@ -1087,7 +1101,8 @@ final class IslandPanel: NSPanel {
     func currentIslandFrame(nw: CGFloat, nh: CGFloat) -> CGRect {
         let s = AppState.shared
         let (w, fixedH) = islandSize(mode: s.mode, view: s.view,
-                                      progress: s.uploadProgress, nw: nw, nh: nh)
+                                      progress: s.uploadProgress, nw: nw, nh: nh,
+                                      sessionCount: s.sessionStore.sessions.count)
         let h: CGFloat
         if s.mode == .expanded && s.view == .prompt {
             let base: CGFloat = 240
@@ -1150,10 +1165,17 @@ extension Notification.Name {
 func islandSize(mode: IslandMode, view: IslandView,
                 progress: Double = 0,
                 nw: CGFloat = IslandConst.notchWidth,
-                nh: CGFloat = IslandConst.notchHeight) -> (CGFloat, CGFloat) {
+                nh: CGFloat = IslandConst.notchHeight,
+                sessionCount: Int = 0) -> (CGFloat, CGFloat) {
     switch mode {
     case .hidden:   return (nw, nh)
-    case .compact:  return (nw + 160, nh)
+    case .compact:
+        // With agent sessions the quiet strip sets the width (symmetric around the camera);
+        // without any, the island keeps its shipping compact width.
+        if sessionCount > 0 {
+            return (AssistantStripGeometry.compactWidth(notchWidth: nw, subs: sessionCount - 1), nh)
+        }
+        return (nw + 160, nh)
     case .expanded:
         let layout = IslandConst.viewLayouts[view]!
         return (IslandConst.expandedWidth, layout.height)

@@ -20,6 +20,9 @@ final class IslandStateMachine {
     /// When non-nil and returns true, timers and mouse-leave never auto-collapse or hide the island.
     var isHeldOpen: (() -> Bool)?
 
+    /// While this returns true (agent sessions exist) the compact island never auto-hides.
+    var keepsCompact: (() -> Bool)?
+
     /// home → petit delay (seconds). Override for debug.
     var homeToPetitDelay: TimeInterval = 15
     /// petit → hidden delay (seconds). Override for debug.
@@ -138,6 +141,14 @@ final class IslandStateMachine {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
 
+    /// The last agent session ended: compact has nothing left to show, so hide it now
+    /// (unless an approval or question holds it open).
+    func sessionsEnded() {
+        guard state == .petit, isHeldOpen?() != true, keepsCompact?() != true else { return }
+        cancelTimers()
+        transition(to: .hidden)
+    }
+
     /// Non-alert work event: show compact from hidden (HookServer reveal)
     func reveal() {
         guard state == .hidden else { return }
@@ -151,7 +162,8 @@ final class IslandStateMachine {
     private func schedulePetitHide() {
         petitHideWork?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            guard let self, self.state == .petit, !(self.isHeldOpen?() ?? false) else { return }
+            guard let self, self.state == .petit, !(self.isHeldOpen?() ?? false),
+                  !(self.keepsCompact?() ?? false) else { return }
             self.transition(to: .hidden)
         }
         petitHideWork = item

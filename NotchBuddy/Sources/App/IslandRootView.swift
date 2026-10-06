@@ -22,6 +22,7 @@ struct IslandRootView: View {
 
 struct IslandContainer: View {
     @ObservedObject var state: AppState
+    @ObservedObject private var assistant = AssistantModel.shared
     @State private var islandWidth:  CGFloat = IslandConst.notchWidth
     @State private var islandHeight: CGFloat = IslandConst.notchHeight
     @State private var cornerRadius: CGFloat = IslandConst.roundedCorner
@@ -56,6 +57,11 @@ struct IslandContainer: View {
         // shared bot stands down rather than stacking a second one on top of it.
         let botHidden = uploadActive || greetingActive
             || (state.mode == .expanded && state.view.isHarnessSurface)
+
+        // Compact with at least one agent session: the quiet strip (main Mochi left of the camera,
+        // small Mochis right) replaces the resting bot and the mini grid. With no session the
+        // shipping compact island is untouched.
+        let stripActive = state.mode == .compact && !state.sessionStore.sessions.isEmpty
 
         return ZStack(alignment: .topLeading) {
             // Black island shape
@@ -109,20 +115,40 @@ struct IslandContainer: View {
                     Rectangle().frame(width: islandWidth,
                                       height: state.mode == .expanded ? 320 : islandHeight)
                 }
-                .opacity(botHidden ? 0 : 1)
-                .animation(.easeInOut(duration: 0.25), value: botHidden)
+                .opacity(botHidden || stripActive ? 0 : 1)
+                .animation(.easeInOut(duration: 0.25), value: botHidden || stripActive)
+
+            // The main Mochi: one instance, always in the tree (Step 7 moves it into the panel).
+            AssistantMainMochi(model: assistant, state: state, islandW: islandWidth, islandH: islandHeight)
+
+            // Small Mochis right of the camera.
+            AssistantStrip(
+                model: assistant,
+                geometry: AssistantStripGeometry(
+                    islandWidth: islandWidth, islandHeight: islandHeight,
+                    notchWidth: state.notchWidth,
+                    restingDiameter: IslandRestingLayout(width: islandWidth, height: islandHeight).botDiameter),
+                isPaused: !stripActive,
+                onSelect: { id in
+                    assistant.select(id)
+                    NotificationCenter.default.post(name: .hookExpand, object: IslandView.overview)
+                })
+                .mask(alignment: .topLeading) { Rectangle().frame(width: islandWidth, height: islandHeight) }
+                .opacity(stripActive ? 1 : 0)
+                .allowsHitTesting(stripActive)
+                .animation(.easeInOut(duration: 0.2), value: stripActive)
 
             CountdownBar(state: state, islandW: islandWidth)
 
             Group {
-                if state.mode == .compact {
+                if state.mode == .compact && !stripActive {
                     CompactMiniGrid(state: state)
                         .scaleEffect(IslandRestingLayout(width: islandWidth, height: islandHeight).miniGridScale)
                         .position(x: islandWidth - 40, y: islandHeight / 2)
                         .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: state.mode == .compact)
+            .animation(.easeInOut(duration: 0.25), value: state.mode == .compact && !stripActive)
         }
         .frame(width: islandWidth, height: islandHeight, alignment: .topLeading)
         .onChange(of: state.mode) { oldMode, newMode in
@@ -130,7 +156,8 @@ struct IslandContainer: View {
             let anim = shrinking ? closeEase : openSpring
             let (w, h) = islandSize(mode: newMode, view: state.view,
                                     progress: state.uploadProgress,
-                                    nw: state.notchWidth, nh: state.notchHeight)
+                                    nw: state.notchWidth, nh: state.notchHeight,
+                                    sessionCount: state.sessionStore.sessions.count)
             let cr  = newMode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             let tr: CGFloat = 0
             withAnimation(anim) {
@@ -139,6 +166,13 @@ struct IslandContainer: View {
                 cornerRadius     = cr
                 islandTopRadius  = tr
             }
+        }
+        .onChange(of: state.sessionStore.sessions.count) { _, count in
+            // The compact width follows the number of small Mochis.
+            guard state.mode == .compact else { return }
+            let (w, _) = islandSize(mode: .compact, view: state.view, nw: state.notchWidth,
+                                    nh: state.notchHeight, sessionCount: count)
+            withAnimation(openSpring) { islandWidth = w }
         }
         .onChange(of: state.view) { _, newView in
             guard state.mode == .expanded else { return }
@@ -149,7 +183,8 @@ struct IslandContainer: View {
             }
             let (w, h) = islandSize(mode: .expanded, view: newView,
                                     progress: state.uploadProgress,
-                                    nw: state.notchWidth, nh: state.notchHeight)
+                                    nw: state.notchWidth, nh: state.notchHeight,
+                                    sessionCount: state.sessionStore.sessions.count)
             withAnimation(openSpring) {
                 islandWidth  = w
                 islandHeight = newView == .prompt ? chatPromptHeight : h
@@ -162,7 +197,8 @@ struct IslandContainer: View {
         .onAppear {
             let (w, h) = islandSize(mode: state.mode, view: state.view,
                                     progress: state.uploadProgress,
-                                    nw: state.notchWidth, nh: state.notchHeight)
+                                    nw: state.notchWidth, nh: state.notchHeight,
+                                    sessionCount: state.sessionStore.sessions.count)
             islandWidth      = w
             islandHeight     = state.view == .prompt ? chatPromptHeight : h
             cornerRadius     = state.mode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner

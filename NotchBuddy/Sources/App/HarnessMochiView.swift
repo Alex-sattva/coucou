@@ -23,6 +23,8 @@ struct HarnessMochiView: View {
     /// CLAUDE.md's budget is 0 % CPU when hidden; a `TimelineView(.animation)` left running
     /// behind an `opacity(0)` is the classic way to break that.
     let isPaused: Bool
+    /// False in the compact strip: no halo and no ring, just the Mochi (the prototype's quiet strip).
+    let showsDecor: Bool
 
     @StateObject private var engine = BotEngine()
     @State private var hopStart: Double = 0
@@ -35,26 +37,28 @@ struct HarnessMochiView: View {
          state: HarnessMochiState,
          diameter: CGFloat = HarnessMetrics.bigMochi,
          hopToken: Int = 0,
-         isPaused: Bool = false) {
+         isPaused: Bool = false,
+         showsDecor: Bool = true) {
         self.hex = hex
         self.state = state
         self.diameter = diameter
         self.hopToken = hopToken
         self.isPaused = isPaused
+        self.showsDecor = showsDecor
     }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: isPaused)) { timeline in
             let now = timeline.date.timeIntervalSinceReferenceDate
             ZStack {
-                halo
+                if showsDecor { halo }
                 Canvas { context, size in
                     engine.update(dt: 1.0 / 60.0)
                     applyMotion(now: now)
                     engine.draw(context: context, size: size)
                 }
                 .frame(width: diameter, height: diameter)
-                ring(now: now)
+                if showsDecor { ring(now: now) }
             }
             .frame(width: diameter, height: diameter)
         }
