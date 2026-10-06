@@ -19,24 +19,27 @@ enum WindowContextCapture {
         let axApp = AXUIElementCreateApplication(pid)
 
         // --- Window title ---
-        var title = ""
-        var windowRef: CFTypeRef?
-        if AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
-           let windowRef {
-            // swiftlint:disable force_cast
-            let axWindow = windowRef as! AXUIElement
-            var titleRef: CFTypeRef?
-            if AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef) == .success,
-               let t = titleRef as? String {
-                title = t
-            }
-        }
+        let title = focusedWindowTitle(of: axApp) ?? ""
 
         // --- Browser URL ---
         let url = browserURL(for: app)
 
         return .window(appName: appName, title: title, url: url)
         #endif
+    }
+
+    /// Title of the app's focused window via Accessibility, or nil when unavailable.
+    /// Shared with `WorkspaceContextTracker`. Callers gate on `AXIsProcessTrusted()` / APPSTORE.
+    static func focusedWindowTitle(of axApp: AXUIElement) -> String? {
+        var windowRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
+              let windowRef else { return nil }
+        // swiftlint:disable:next force_cast
+        let axWindow = windowRef as! AXUIElement
+        var titleRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef) == .success,
+              let t = titleRef as? String else { return nil }
+        return t
     }
 
     // MARK: - Private

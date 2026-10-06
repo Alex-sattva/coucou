@@ -385,6 +385,10 @@ final class AppState: ObservableObject {
     // Assistant layer: one session per hook session_id, beside the pill layer (`tasks`).
     @Published var sessionStore = AgentSessionStore()
 
+    // Workspace (session.workspace) the user's front window belongs to, set by WorkspaceContextTracker
+    // after a 1 s dwell. nil when unknown, Accessibility is off, or the APPSTORE build.
+    @Published var contextWorkspace: String?
+
     // Per-session FileDiffs (same 50 cap as `sessionDiffs`); cleared when the session ends or is pruned.
     // Not @Published — session phase changes already trigger redraws.
     var sessionFileDiffs: [String: [FileDiff]] = [:]
