@@ -56,6 +56,9 @@ final class AssistantModel: ObservableObject {
     /// The finished card shows its diff in place instead of the file list.
     @Published private(set) var showsDiff = false
 
+    /// One-line error shown in the bar (nothing launched, or a run that failed while the panel is open).
+    @Published private(set) var barError: String?
+
     private let state = AppState.shared
     private var contextWorkspace: String?
     // Latest pending requests, as emitted (the @Published properties are still the old value then).
@@ -181,6 +184,68 @@ final class AssistantModel: ObservableObject {
     /// Files the main session changed, one row per path (added/removed summed), in first-touched order.
     func changedFiles(for sessionId: String) -> [AssistantChangedFile] {
         AssistantChangedFile.group(state.sessionFileDiffs[sessionId] ?? [])
+    }
+
+    // MARK: - The bar: OpenCode tasks
+
+    /// Where a task from the bar would run (nil: the bar is disabled).
+    var taskFolder: AssistantTaskFolder? {
+        AssistantBarLogic.folder(main: mainSession, contextWorkspace: contextWorkspace,
+                                 sessions: Array(sessions.values))
+    }
+
+    func clearBarError() {
+        if barError != nil { barError = nil }
+    }
+
+    /// Enter in the bar. Starts an `opencode` process in the main session's folder and closes the
+    /// panel. Never talks to a Claude Code / Codex session.
+    /// A failure shows in `barError` and the bar keeps its text.
+    func submitTask(_ text: String) {
+        // Cheap checks first; the CLI lookup can spawn `which`, so it runs off the main actor.
+        let folder = taskFolder
+        let modelId = state.opencodeChatModel
+        let pre = AssistantBarLogic.check(text: text, folder: folder, model: modelId, cliAvailable: true)
+        switch pre {
+        case .ignore:
+            return
+        case .error(let message):
+            barError = message
+            return
+        case .launch(let prompt, let cwd):
+            barError = nil
+            Task { [weak self] in
+                let found = await Task.detached { OpenCodeChat.cliURL() != nil }.value
+                guard let self else { return }
+                let final = AssistantBarLogic.check(text: prompt, folder: folder, model: modelId,
+                                                    cliAvailable: found)
+                guard case .launch = final else {
+                    if case .error(let message) = final { self.barError = message }
+                    return
+                }
+                self.launchTask(prompt: prompt, model: modelId, cwd: cwd)
+            }
+            return
+        }
+    }
+
+    private func launchTask(prompt: String, model: String, cwd: String) {
+        dismiss()
+        Task { [weak self] in
+            do {
+                try await OpenCodeChat.run(prompt: prompt, model: model,
+                                           cwd: URL(fileURLWithPath: cwd))
+            } catch {
+                let message = (error as? OpenCodeChat.ChatError)?.message ?? error.localizedDescription
+                appendAppLog("nb.log", "assistant bar: OpenCode task failed: \(message)")
+                guard let self, self.isOpen else { return }
+                self.barError = Self.oneLine(message)
+            }
+        }
+    }
+
+    private static func oneLine(_ s: String) -> String {
+        s.split(whereSeparator: \.isNewline).first.map(String.init) ?? s
     }
 
     // MARK: - Private

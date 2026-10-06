@@ -217,6 +217,8 @@ enum AssistantMetrics {
     static let approval: CGFloat = 236
     static let blocked: CGFloat = 262
     static let finishedBase: CGFloat = 206
+    /// The bar row under the finished card (follow-up task).
+    static let finishedBar: CGFloat = 34
     static let fileRow: CGFloat = 21
     static let maxFileRows = 3
     static let questionBase: CGFloat = 176
@@ -232,9 +234,59 @@ enum AssistantMetrics {
         case .approval: h = approval
         case .blocked: h = blocked
         case .question(let rows): h = questionBase + CGFloat(max(1, rows)) * questionRow
-        case .finished(let files): h = finishedBase + CGFloat(min(files, maxFileRows)) * fileRow
+        case .finished(let files): h = finishedBase + finishedBar + CGFloat(min(files, maxFileRows)) * fileRow
         case .diff: h = diff
         }
         return min(h, maxHeight)
+    }
+}
+
+// MARK: - The bar: OpenCode tasks
+
+/// Where an OpenCode task started from the bar runs.
+struct AssistantTaskFolder: Equatable, Sendable {
+    let cwd: String
+    let workspace: String
+}
+
+enum AssistantBarLogic {
+    /// The folder: the main session's cwd, else the cwd of the most recent session in the
+    /// workspace the user is working in (`contextWorkspace`), else nil (the bar is disabled).
+    static func folder(main: AgentSession?, contextWorkspace: String?,
+                       sessions: [AgentSession]) -> AssistantTaskFolder? {
+        if let main, !main.cwd.isEmpty {
+            return AssistantTaskFolder(cwd: main.cwd, workspace: main.workspace)
+        }
+        guard let contextWorkspace else { return nil }
+        let inContext = sessions
+            .filter { $0.workspace == contextWorkspace && !$0.cwd.isEmpty }
+            .min { a, b in
+                if a.lastEventAt != b.lastEventAt { return a.lastEventAt > b.lastEventAt }
+                return a.id < b.id
+            }
+        return inContext.map { AssistantTaskFolder(cwd: $0.cwd, workspace: $0.workspace) }
+    }
+
+    enum Check: Equatable, Sendable {
+        case ignore                      // empty or whitespace: nothing happens
+        case error(String)               // one line shown in the bar, nothing launched
+        case launch(prompt: String, cwd: String)
+    }
+
+    static let noFolderCopy = "Open a project window first"
+    static let noModelCopy = "No OpenCode model set. Pick one in Settings."
+    static let cliMissingCopy = "OpenCode CLI not found. Install it, then try again."
+
+    /// Order matters: empty text is a no-op before any error is shown.
+    static func check(text: String, folder: AssistantTaskFolder?, model: String,
+                      cliAvailable: Bool) -> Check {
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return .ignore }
+        guard let folder else { return .error(noFolderCopy) }
+        guard !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .error(noModelCopy)
+        }
+        guard cliAvailable else { return .error(cliMissingCopy) }
+        return .launch(prompt: prompt, cwd: folder.cwd)
     }
 }

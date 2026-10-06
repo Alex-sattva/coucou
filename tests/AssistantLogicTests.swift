@@ -286,11 +286,43 @@ enum AssistantLogicTests {
             checkEq("bar 112", AssistantMetrics.height(for: .bar), 112)
             checkEq("approval 236", AssistantMetrics.height(for: .approval), 236)
             checkEq("blocked 262", AssistantMetrics.height(for: .blocked), 262)
-            checkEq("done with 2 files 248", AssistantMetrics.height(for: .finished(files: 2)), 248)
-            checkEq("done caps at 3 file rows", AssistantMetrics.height(for: .finished(files: 9)), 269)
+            checkEq("done with 2 files 282", AssistantMetrics.height(for: .finished(files: 2)), 282)
+            checkEq("done caps at 3 file rows", AssistantMetrics.height(for: .finished(files: 9)), 303)
             checkEq("question = rows x 28 + 176", AssistantMetrics.height(for: .question(rows: 5)), 316)
             checkTrue("every height fits the 320 pt window",
                       AssistantMetrics.height(for: .question(rows: 40)) <= 320)
+        }
+
+
+        print("AssistantBarLogic")
+        do {
+            let a = sess("a", workspace: "alpha", last: 1)
+            var blank = sess("b", workspace: "beta", last: 9)
+            blank.cwd = ""
+            let b2 = sess("c", workspace: "beta", last: 5)
+            checkEq("folder: main cwd wins", AssistantBarLogic.folder(
+                main: a, contextWorkspace: "beta", sessions: [a, b2]),
+                AssistantTaskFolder(cwd: "/code/alpha", workspace: "alpha"))
+            checkEq("folder: empty main cwd -> context workspace session", AssistantBarLogic.folder(
+                main: blank, contextWorkspace: "beta", sessions: [a, blank, b2]),
+                AssistantTaskFolder(cwd: "/code/beta", workspace: "beta"))
+            checkEq("folder: empty main cwd, no context -> nil", AssistantBarLogic.folder(
+                main: blank, contextWorkspace: nil, sessions: [a, blank]), nil)
+            checkEq("folder: no sessions -> nil", AssistantBarLogic.folder(
+                main: nil, contextWorkspace: "beta", sessions: []), nil)
+
+            let f = AssistantTaskFolder(cwd: "/code/alpha", workspace: "alpha")
+            checkEq("whitespace is a no-op", AssistantBarLogic.check(
+                text: "  \n ", folder: nil, model: "", cliAvailable: false), .ignore)
+            checkEq("no folder", AssistantBarLogic.check(
+                text: "x", folder: nil, model: "m", cliAvailable: true), .error(AssistantBarLogic.noFolderCopy))
+            checkEq("no model", AssistantBarLogic.check(
+                text: "x", folder: f, model: " ", cliAvailable: true), .error(AssistantBarLogic.noModelCopy))
+            checkEq("cli missing", AssistantBarLogic.check(
+                text: "x", folder: f, model: "m", cliAvailable: false), .error(AssistantBarLogic.cliMissingCopy))
+            checkEq("launch trims the prompt", AssistantBarLogic.check(
+                text: "  add a readme \n", folder: f, model: "m", cliAvailable: true),
+                .launch(prompt: "add a readme", cwd: "/code/alpha"))
         }
 
         print("")

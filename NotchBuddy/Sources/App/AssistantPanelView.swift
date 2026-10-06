@@ -28,9 +28,8 @@ struct AssistantPanelView: View {
                 .frame(height: 34)
                 .padding(.top, 8)
 
-            AssistantTopRow(session: main, isBar: content == .bar,
-                            barText: $barText, barFocused: $barFocused,
-                            onSubmit: { model.dismiss() })
+            AssistantTopRow(session: main, isBar: content == .bar, model: model,
+                            barText: $barText, barFocused: $barFocused)
                 .frame(height: 44)
 
             if content != .bar {
@@ -49,6 +48,15 @@ struct AssistantPanelView: View {
                     .transition(.opacity)
             }
 
+            // Under the finished card the bar stays available for a follow-up task.
+            if case .finished = content {
+                AssistantBarField(model: model, text: $barText, focused: $barFocused)
+                    .padding(.top, 8)
+                    .padding(.leading, AssistantPanelLayout.contentLeading)
+                    .padding(.trailing, 16)
+                    .frame(height: AssistantMetrics.finishedBar - 8, alignment: .top)
+            }
+
             Spacer(minLength: 0)
         }
         .frame(width: IslandConst.expandedWidth, alignment: .topLeading)
@@ -64,6 +72,11 @@ struct AssistantPanelView: View {
         .animation(.easeInOut(duration: 0.2), value: content)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        // A closed panel starts clean: the typed text and a stale error go away with it.
+        .onChange(of: model.isOpen) { _, open in
+            if !open { barText = ""; model.clearBarError() }
+        }
+        .onChange(of: barText) { _, _ in model.clearBarError() }
         // The 8 s fold exists only while a finished card is on screen. Hover, a focused bar or an
         // open diff pause it (the key changes, so the wait restarts when they end).
         .task(id: foldKey(content: content, main: main)) {
@@ -128,20 +141,14 @@ enum AssistantPanelLayout {
 struct AssistantTopRow: View {
     let session: AgentSession?
     let isBar: Bool
+    @ObservedObject var model: AssistantModel
     @Binding var barText: String
     var barFocused: FocusState<Bool>.Binding
-    let onSubmit: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             if isBar {
-                // Step 10 launches the OpenCode task. Until then Enter only closes the panel.
-                TextField(placeholder, text: $barText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 17))
-                    .focused(barFocused)
-                    .disabled(session == nil)
-                    .onSubmit(onSubmit)
+                AssistantBarField(model: model, text: $barText, focused: barFocused)
             } else {
                 Text(taskLine)
                     .agentSwap(key: session?.id)
@@ -164,11 +171,6 @@ struct AssistantTopRow: View {
             return prompt.replacingOccurrences(of: "\n", with: " ")
         }
         return session.workspace
-    }
-
-    private var placeholder: String {
-        guard let session else { return "Open a project window first" }
-        return "New OpenCode task in \(session.workspace)…"
     }
 }
 
@@ -217,6 +219,36 @@ struct AssistantMicButton: View {
             .opacity(0.6)
             .allowsHitTesting(false)
             .help("Voice is not available yet")
+    }
+}
+
+// MARK: - Bar
+
+/// The text field that starts an OpenCode task in the main session's folder, with its one-line
+/// error. Disabled when there is no folder to run in.
+struct AssistantBarField: View {
+    @ObservedObject var model: AssistantModel
+    @Binding var text: String
+    var focused: FocusState<Bool>.Binding
+
+    var body: some View {
+        let folder = model.taskFolder
+        VStack(alignment: .leading, spacing: 1) {
+            TextField(folder.map { "New OpenCode task in \($0.workspace)…" } ?? AssistantBarLogic.noFolderCopy,
+                      text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 17))
+                .focused(focused)
+                .disabled(folder == nil)
+                .onSubmit { model.submitTask(text) }
+            if let error = model.barError {
+                Text(error)
+                    .font(.system(size: 11.5))
+                    .foregroundColor(Color(hex: "#F87171"))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
     }
 }
 
