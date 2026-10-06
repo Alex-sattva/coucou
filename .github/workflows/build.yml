@@ -60,6 +60,9 @@ jobs:
       - name: Title matcher tests
         run: bash scripts/test-title-matcher.sh
 
+      - name: Option-hold tests
+        run: bash scripts/test-option-hold.sh
+
       - name: Build
         run: |
           xcodebuild \
