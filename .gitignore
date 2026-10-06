@@ -19,3 +19,19 @@ DerivedData/
 # Local only (never published)
 .claude/
 _prive/
+# Voice samples are licensed/private — never commit raw audio or consent forms
+voice-mochi/raw/
+voice-mochi/wavs/
+voice-mochi/*consent*
+voice-mochi/*CONSENT*
+# Voice lab is local-only (venv, caches, downloads, generated clips)
+voice-mochi/.venv/
+voice-mochi/.hf_cache/
+voice-mochi/test/
+voice-mochi/*.csv
+mist-voice-audio/
+.uv-cache/
+.cache/
+.hf-cache/
+.uv-python/
+.tmp/
