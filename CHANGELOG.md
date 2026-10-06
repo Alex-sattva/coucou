@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.8 — October 6, 2026
+
+- The island has a new home: the workspace you are talking to is the big Mochi on the left, your other workspaces are the Mochis on the right, and tapping one moves the floor between them
+- A voice bar sits under the trail. Start typing and it unfolds; the workspace you name is the one the request goes to; a suggested phrase completes itself with Tab or →
+- When a name could mean two workspaces, the island asks which one you meant instead of guessing
+- Permissions and questions are answered inline, just above the composer, and the caption steps aside so the card never resizes
+- The trail gives way to a short summary when a run ends. The clock button lists the workspace's threads, and + starts a fresh one
+- OpenCode runs now start in the workspace's own folder instead of your home directory, can be stopped from the bar while they run, and report their token usage and cost
+- Each workspace's own panel — its setup state, activity and open buttons — is one press away on the agent line, and Esc, or picking another workspace, closes it
+- The island's own little Mochi no longer sits invisibly over the new home: clicks on the trail and the composer now go where they look like they go
+- The microphone button is in place for voice input; it is a push-to-talk toggle for now and the transcription behind it is not wired yet
+
 ## 0.1.7 — October 4, 2026
 
 - Keyboard shortcuts from anywhere: ⌃⌥Space opens the chat, ⌃⌥A jumps to a waiting permission or question, ⌃⌥T brings your terminal forward, ⌃⌥] and ⌃⌥[ switch pills, ⌃⌥M mutes Mochi, ⌃⌥D sends him to the desktop and back, ⌃⌥G opens the wardrobe, and ⌃⌥W attaches the front window to the chat (GitHub build) (#205)
