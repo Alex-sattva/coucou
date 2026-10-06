@@ -369,7 +369,7 @@ final class AppState: ObservableObject {
     // Pending AskUserQuestion requests, one per session id.
     @Published var pendingQuestions: [String: PendingQuestion] = [:]
 
-    /// The approval that has waited longest. The single-card views (and the v1 harness riser)
+    /// The approval that has waited longest. The single-card views
     /// show this one and must act on its `sessionId`.
     var pendingApproval: ApprovalInfo? {
         PendingOrder.oldest(pendingApprovals, arrivedAt: { $0.arrivedAt })?.item

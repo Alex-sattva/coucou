@@ -12,7 +12,7 @@ struct OpenCodeRunResult: Sendable {
 
 // MARK: - In-flight run registry
 
-/// Tracks the in-flight `opencode run` child so the harness can stop it.
+/// Tracks the in-flight `opencode run` child so a running task can be stopped.
 @MainActor
 final class OpenCodeRunRegistry {
     static let shared = OpenCodeRunRegistry()
@@ -343,7 +343,7 @@ enum OpenCodeChat {
     ///   for the background service to start" and leaves the island on "…".
     /// - `cwd`: per-folder working directory; nil keeps the historical `$HOME`
     ///   behaviour, a non-nil URL must exist and be a directory.
-    /// - The live child is registered in `OpenCodeRunRegistry` so the harness
+    /// - The live child is registered in `OpenCodeRunRegistry` so a caller
     ///   can SIGTERM it through `stop(runId)` / `stopAll()`.
     @discardableResult
     static func run(prompt: String, model: String, cwd: URL? = nil,

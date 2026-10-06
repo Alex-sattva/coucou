@@ -8,8 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         HotKeyCenter.shared.unregisterAll()
-        // No OpenCode child may outlive the app: the harness can start runs from its voice
-        // bar, and without this they would keep going after quit (the 120 s watchdog only
+        // No OpenCode child may outlive the app: a run started from the assistant bar
+        // would keep going after quit (the 120 s watchdog only
         // covers a run that is still tracked).
         OpenCodeRunRegistry.shared.stopAll()
     }

@@ -15,21 +15,6 @@ enum IslandView: String, CaseIterable {
 }
 
 extension IslandView {
-    /// A surface whose body is the harness (`HarnessVoiceView`).
-    ///
-    /// `overview` is the home. `approval` is here too: since the harness answers permissions
-    /// **inline** in the flow above its composer (plan Step 6), a pending permission must not
-    /// swap the body out to `ApprovalView` — the whole point is that the card never resizes.
-    /// `question` deliberately keeps its shipped card: the inline strip cannot express
-    /// "Other…" free text or more than three options, and a question must always be
-    /// answerable, so it keeps `QuestionView` — the strip hands the question back to it
-    /// (`VoiceHarnessModel.showFullQuestion`) as soon as it runs out of room.
-    ///
-    /// Both callers that care read this: the renderer in `IslandViewContent.body`, and the
-    /// island's own `BotPlacement`, which must stand down because the harness draws its own
-    /// Mochi (otherwise the 58 pt home bot is painted over the harness's 26 pt card Mochi).
-    var isHarnessSurface: Bool { self == .overview || self == .approval }
-
     /// The four alert views. The panel draws them only for agent sessions (`AssistantRouting`).
     var isAlertView: Bool {
         switch self {

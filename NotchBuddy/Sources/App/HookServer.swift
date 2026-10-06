@@ -195,7 +195,7 @@ final class HookServer: @unchecked Sendable {
         showNextPendingOrSettle(note: note)
     }
 
-    /// Called by QuestionView / the harness riser. Sends the answers to THAT session's hook and cleans up.
+    /// Called by QuestionView / the assistant panel. Sends the answers to THAT session's hook and cleans up.
     /// No-op when the session's question is already gone.
     @MainActor
     func sendQuestionAnswers(_ answers: [String: Any], sessionId: String) {

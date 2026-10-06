@@ -1088,10 +1088,9 @@ final class IslandWindowController: NSWindowController {
 
     private func isBotHit(_ windowPoint: CGPoint) -> Bool {
         let s = AppState.shared
-        // A harness surface does not draw the ship bot (`IslandRootView.botHidden`), but
+        // The assistant panel does not draw the ship bot (`IslandRootView.botHidden`), but
         // `botPosition` still returns its geometry, so this circle would go on swallowing
-        // clicks over the harness's left card — its Mochi, agent line, riser text and the
-        // left half of the composer. Three unlucky clicks there threw the island into
+        // clicks over the panel. Three unlucky clicks there threw the island into
         // `.confused` for 3.3 s (`handleDizzy`), and a >3 pt drag attached the window.
         // There is nothing to hit when the character is not on screen.
         if s.mode == .expanded && AssistantModel.shared.routesToPanel(s.view) { return false }

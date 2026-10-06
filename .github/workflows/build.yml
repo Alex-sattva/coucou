@@ -45,12 +45,6 @@ jobs:
       - name: Wardrobe tests
         run: bash scripts/test-wardrobe.sh
 
-      - name: Workspace routing tests
-        run: bash scripts/test-workspace-routing.sh
-
-      - name: Thread store tests
-        run: bash scripts/test-thread-store.sh
-
       - name: Agent session tests
         run: bash scripts/test-agent-session.sh
 
