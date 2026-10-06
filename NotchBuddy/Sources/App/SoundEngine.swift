@@ -23,7 +23,9 @@ final class SoundEngine {
         let names = ["peek","open","close","hover","blip","slap","annoyed","dizzy","greet",
                      "work","finish","error","approval","question","approve","gulp","tick",
                      "send","love","pop","proud","wink","yawn","attach","think","search",
-                     "rate","sleep","greeting"]
+                     "rate","sleep","greeting",
+                     "mochi_00","mochi_01","mochi_02","mochi_03","mochi_04","mochi_05",
+                     "mochi_06","mochi_07","mochi_08","mochi_09","mochi_10"]
         for name in names {
             guard let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "sounds") else { continue }
             var pool: [AVAudioPlayer] = []
@@ -57,6 +59,18 @@ final class SoundEngine {
         guard enabled && AppState.shared.soundEnabled else { return }
         guard let pool = players[name] else { return }
         // Find a player that is not currently playing
+        let player = pool.first { !$0.isPlaying } ?? pool[0]
+        player.currentTime = 0
+        player.volume = volume
+        player.play()
+    }
+
+    /// Spoken Mochi voice line (mochi_00…mochi_10). Gated by both
+    /// soundEnabled and the dedicated voice toggle so users can keep
+    /// UI blips while muting the voice, or vice versa.
+    func playVoice(_ name: String) {
+        guard enabled && AppState.shared.soundEnabled && AppState.shared.voiceEnabled else { return }
+        guard let pool = players[name] else { return }
         let player = pool.first { !$0.isPlaying } ?? pool[0]
         player.currentTime = 0
         player.volume = volume

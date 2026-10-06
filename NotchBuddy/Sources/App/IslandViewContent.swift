@@ -4625,6 +4625,19 @@ struct SettingsIslandView: View {
                         .frame(width: 72)
                         .opacity(state.soundEnabled ? 1 : 0.4)
                 }
+                // Voice row
+                HStack(spacing: 10) {
+                    Toggle("", isOn: $state.voiceEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .scaleEffect(0.75)
+                        .frame(width: 44)
+                    Text("Voice")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(Color(hex: "#C5C8CD"))
+                        .opacity(state.soundEnabled ? 1 : 0.4)
+                }
+                .disabled(!state.soundEnabled)
 
                 // Auto-close row
                 HStack(spacing: 10) {

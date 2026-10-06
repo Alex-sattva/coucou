@@ -481,6 +481,7 @@ final class HookServer: @unchecked Sendable {
                 }
             }
             SoundEngine.shared.play("finish")
+            SoundEngine.shared.playVoice("mochi_02")
             if focused {
                 expandIfNeeded(to: .finished)
             } else {
@@ -498,6 +499,7 @@ final class HookServer: @unchecked Sendable {
         case "StopFailure":
             state.updateTask(id: agentId, state: .error)
             SoundEngine.shared.play("error")
+            SoundEngine.shared.playVoice("mochi_08")
             if focused {
                 expandIfNeeded(to: .error)
             } else {

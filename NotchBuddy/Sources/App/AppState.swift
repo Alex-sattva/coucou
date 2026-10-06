@@ -61,6 +61,11 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(soundEnabled, forKey: "soundEnabled") }
     }
 
+    // Mochi voice lines (mochi_00…mochi_10) — persisted, independent of UI blips
+    @Published var voiceEnabled: Bool = true {
+        didSet { UserDefaults.standard.set(voiceEnabled, forKey: "voiceEnabled") }
+    }
+
     // Mochi outfit selection — persisted
     @Published var mochiOutfitSelection: Outfit = .auto {
         didSet { Outfit.stored = mochiOutfitSelection }
@@ -401,6 +406,7 @@ final class AppState: ObservableObject {
         let ud = UserDefaults.standard
 
         if let v = ud.object(forKey: "soundEnabled") as? Bool   { soundEnabled = v }
+        if let v = ud.object(forKey: "voiceEnabled") as? Bool   { voiceEnabled = v }
         if let v = ud.object(forKey: "soundVolume")  as? Double { soundVolume  = v }
         mochiOutfitSelection = Outfit.stored
         if let v = ud.string(forKey: "claudeModel"),

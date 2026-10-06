@@ -549,6 +549,7 @@ final class BotEngine: ObservableObject {
                 TweenKey(target: 1.0,  duration: 260, ease: Ease.back),
             ])
             SoundEngine.shared.play("greet")
+            SoundEngine.shared.playVoice("mochi_00")
         }
 
         // 0.55s: first blink

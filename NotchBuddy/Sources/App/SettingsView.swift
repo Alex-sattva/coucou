@@ -224,6 +224,8 @@ struct SettingsView: View {
         GroupBox("Sound") {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Enable sounds", isOn: $state.soundEnabled)
+                Toggle("Mochi voice lines", isOn: $state.voiceEnabled)
+                    .disabled(!state.soundEnabled)
                 HStack(spacing: 8) {
                     Text("Volume")
                         .frame(width: 56, alignment: .leading)
