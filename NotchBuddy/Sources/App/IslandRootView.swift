@@ -178,15 +178,6 @@ struct IslandContainer: View {
 
             CountdownBar(state: state, islandW: islandWidth)
 
-            Group {
-                if state.mode == .compact && !stripActive {
-                    CompactMiniGrid(state: state)
-                        .scaleEffect(IslandRestingLayout(width: islandWidth, height: islandHeight).miniGridScale)
-                        .position(x: islandWidth - 40, y: islandHeight / 2)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.25), value: state.mode == .compact && !stripActive)
         }
         .frame(width: islandWidth, height: islandHeight, alignment: .topLeading)
         // The hand-off dot, above the strip and the main Mochi in both layouts.
@@ -697,28 +688,6 @@ struct ClaudePlanHeaderPill: View {
     }
 }
 #endif
-
-// MARK: - Compact mini mochi grid (2×2 to the right of the notch)
-
-struct CompactMiniGrid: View {
-    @ObservedObject var state: AppState
-
-    private var others: [AgentTask] {
-        Array(state.tasks.filter { $0.id != state.focusId }.prefix(4))
-    }
-
-    var body: some View {
-        let cols = [GridItem(.fixed(12), spacing: 4), GridItem(.fixed(12), spacing: 4)]
-        LazyVGrid(columns: cols, spacing: 4) {
-            ForEach(others) { task in
-                MiniBotCanvasView(task: task)
-                    .frame(width: 12 / 0.6, height: 12 / 0.6)
-                    .frame(width: 12, height: 12, alignment: .center)
-            }
-        }
-        .frame(width: 28, height: 28)
-    }
-}
 
 // MARK: - Color helper
 

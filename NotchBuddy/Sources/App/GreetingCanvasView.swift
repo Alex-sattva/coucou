@@ -57,7 +57,7 @@ private struct GreetPose {
     var eye: GEyeType; var open, eyeRoll: Double
     var lookX, lookY: Double
     var handL, handR, wave: Double
-    var badge, tint, halo, haloBlue, minis, fx: Double
+    var badge, tint, halo, haloBlue, fx: Double
     var header, card: Double
     var iw, ih: Double
 }
@@ -250,7 +250,7 @@ private func greetPose(_ t: Double, compact: IslandRestingLayout) -> GreetPose {
         tint:     0.6 * GE.inOut(gSeg(t, GT.tint0, GT.tint1)),
         halo:     GE.out(gSeg(t, 0.3, 0.7)),
         haloBlue: gSeg(t, GT.tint0, GT.tint1),
-        minis: 0, fx: 1,
+        fx: 1,
         header: gSeg(t, 0.35, 0.6), card: gSeg(t, 0.18, 0.45),
         iw: iw, ih: ih
     )
@@ -267,7 +267,7 @@ private func smallPose(_ compact: IslandRestingLayout) -> GreetPose {
         lookX: 0, lookY: 0,
         handL: 0, handR: 0, wave: -1,
         badge: 1, tint: 0.6, halo: 0.6, haloBlue: 1,
-        minis: 1, fx: 1,
+        fx: 1,
         header: 0, card: 0,
         iw: sw, ih: Double(compact.height)
     )
@@ -297,7 +297,6 @@ private func pose(_ t: Double, tc: Double, compact: IslandRestingLayout) -> Gree
     let bk = gSeg(t, tc+0.14, tc+0.26)
     p.eye = .dot; p.open = (bk > 0 && bk < 1) ? 1 - sin(.pi*bk)*0.94 : 1
     p.lookX = a.lookX*(1-e); p.lookY = a.lookY*(1-e)
-    p.minis = GE.back(gSeg(t, tc+0.24, tc+0.42))
     p.fx    = 1 - gSeg(t, tc, tc+0.2)
     return p
 }
@@ -582,25 +581,6 @@ private func drawHeader(_ ctx: CGContext, alpha: Double) {
     ctx.restoreGState()
 }
 
-private let miniColors = ["#E86A6A","#3E86E0","#EFAE5A","#8C73F2"]
-
-private func drawMinis(_ ctx: CGContext, alpha: Double, compact: IslandRestingLayout) {
-    guard alpha > 0.01 else { return }
-    let cx = 320 - compact.width/2 + compact.miniGridCenterX
-    let cy = compact.botCenterY
-    let sp: CGFloat = 6 * compact.miniGridScale
-    let offsets: [(CGFloat, CGFloat)] = [(-sp,-sp),(sp,-sp),(-sp,sp),(sp,sp)]
-    for (i,(dx,dy)) in offsets.enumerated() {
-        ctx.saveGState()
-        ctx.translateBy(x: cx+dx, y: cy+dy)
-        let scale = CGFloat(alpha) * compact.miniGridScale
-        ctx.scaleBy(x: scale, y: scale)
-        ctx.setFillColor(gHex(miniColors[i]))
-        ctx.addPath(mochiPath(hw: 5.3, hh: 4)); ctx.fillPath()
-        ctx.restoreGState()
-    }
-}
-
 // MARK: - Full draw
 
 private func drawGreeting(_ ctx: CGContext, size: CGSize, t: Double,
@@ -625,7 +605,6 @@ private func drawGreeting(_ ctx: CGContext, size: CGSize, t: Double,
         ctx.restoreGState()
     }
 
-    drawMinis(ctx, alpha: p.minis, compact: compact)
     drawMochi(ctx, p: p)
 }
 
