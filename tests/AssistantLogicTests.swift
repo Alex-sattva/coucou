@@ -23,7 +23,7 @@ enum AssistantLogicTests {
                      attention: TimeInterval? = nil, last: TimeInterval = 0,
                      seen: Bool = false) -> AgentSession {
         AgentSession(id: id, kind: .claudeCode, cwd: "/code/\(workspace)", workspace: workspace,
-                     colorHex: "#FFFFFF", phase: phase, steps: [], lastPrompt: nil, finalLine: nil,
+                     colorHex: "#FFFFFF", phase: phase, steps: [], lastPrompt: nil, reply: nil,
                      attentionAt: attention.map(at), finishedSeen: seen, lastEventAt: at(last))
     }
 
@@ -268,13 +268,13 @@ enum AssistantLogicTests {
                 finishedFiles: 0, showsDiff: false), .blocked)
             checkEq("finished unseen", AssistantPanelContent.resolve(
                 main: sess("f", phase: .finished, attention: 1), hasApproval: false, questionRows: nil,
-                finishedFiles: 2, showsDiff: false), .finished(files: 2))
+                finishedFiles: 2, showsDiff: false), .finished(files: 2, long: false))
             checkEq("finished and seen is just the bar", AssistantPanelContent.resolve(
                 main: sess("f", phase: .finished, attention: 1, seen: true), hasApproval: false,
                 questionRows: nil, finishedFiles: 2, showsDiff: false), .bar)
             checkEq("diff opens only when there are files", AssistantPanelContent.resolve(
                 main: sess("f", phase: .finished, attention: 1), hasApproval: false, questionRows: nil,
-                finishedFiles: 0, showsDiff: true), .finished(files: 0))
+                finishedFiles: 0, showsDiff: true), .finished(files: 0, long: false))
             checkEq("diff", AssistantPanelContent.resolve(
                 main: sess("f", phase: .finished, attention: 1), hasApproval: false, questionRows: nil,
                 finishedFiles: 1, showsDiff: true), .diff)
@@ -286,8 +286,24 @@ enum AssistantLogicTests {
             checkEq("bar 112", AssistantMetrics.height(for: .bar), 112)
             checkEq("approval 236", AssistantMetrics.height(for: .approval), 236)
             checkEq("blocked 262", AssistantMetrics.height(for: .blocked), 262)
-            checkEq("done with 2 files 282", AssistantMetrics.height(for: .finished(files: 2)), 282)
-            checkEq("done caps at 3 file rows", AssistantMetrics.height(for: .finished(files: 9)), 303)
+            checkEq("done with 2 files 282", AssistantMetrics.height(for: .finished(files: 2, long: false)), 282)
+            checkEq("done caps at 3 file rows", AssistantMetrics.height(for: .finished(files: 9, long: false)), 303)
+            checkEq("a long reply takes the whole window", AssistantMetrics.height(for: .finished(files: 0, long: true)), 320)
+            checkTrue("long reply with files still leaves a readable area",
+                      AssistantMetrics.replyHeight(files: 3) >= 60)
+            checkEq("reply area with no files", AssistantMetrics.replyHeight(files: 0), 120)
+
+            checkTrue("nil reply is short", !AssistantReply.isLong(nil))
+            checkTrue("blank reply is short", !AssistantReply.isLong("  \n "))
+            checkTrue("one short line is short", !AssistantReply.isLong("Done. The build passes."))
+            checkTrue("two paragraphs are long", AssistantReply.isLong("Done.\n\nHere is what changed."))
+            checkTrue("over 110 characters is long", AssistantReply.isLong(String(repeating: "a", count: 111)))
+            checkTrue("exactly 110 characters is short", !AssistantReply.isLong(String(repeating: "a", count: 110)))
+            var longMain = sess("f", phase: .finished, attention: 1)
+            longMain.reply = "When you type a task and press Enter, it doesn't go to the Claude Code session.\n\nMore detail follows."
+            checkEq("finished with a long reply", AssistantPanelContent.resolve(
+                main: longMain, hasApproval: false, questionRows: nil, finishedFiles: 1, showsDiff: false),
+                .finished(files: 1, long: true))
             checkEq("question = rows x 28 + 176", AssistantMetrics.height(for: .question(rows: 5)), 316)
             checkTrue("every height fits the 320 pt window",
                       AssistantMetrics.height(for: .question(rows: 40)) <= 320)

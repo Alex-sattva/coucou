@@ -187,7 +187,7 @@ enum AssistantPanelContent: Equatable, Sendable {
     case approval
     case question(rows: Int)       // rows = option buttons + the "Other..." row
     case blocked
-    case finished(files: Int)
+    case finished(files: Int, long: Bool) // long: the reply needs the scrollable reader
     case diff                      // the finished card's diff, opened in place
 
     /// The card for the main session. `hasApproval` / `questionRows` say whether the held request
@@ -202,7 +202,8 @@ enum AssistantPanelContent: Equatable, Sendable {
             return .bar
         case .blocked: return .blocked
         case .finished where !main.finishedSeen:
-            return showsDiff && finishedFiles > 0 ? .diff : .finished(files: finishedFiles)
+            return showsDiff && finishedFiles > 0 ? .diff
+                : .finished(files: finishedFiles, long: AssistantReply.isLong(main.reply))
         default: return .bar
         }
     }
@@ -212,6 +213,17 @@ enum AssistantPanelContent: Equatable, Sendable {
 /// finished card grows by one file row (21 pt) per changed file, up to 3, and the question card
 /// by 28 pt per option row (options are a vertical list; the prototype's `rows + 120` did not
 /// leave room for the question text and the footer, so the base is 176).
+/// The finished card shows a short reply as a headline; anything longer gets the reader.
+enum AssistantReply {
+    /// Two lines of the 15 pt headline hold about 110 characters across the panel.
+    static let headlineChars = 110
+
+    static func isLong(_ reply: String?) -> Bool {
+        guard let text = reply?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return false }
+        return text.contains("\n") || text.count > headlineChars
+    }
+}
+
 enum AssistantMetrics {
     static let bar: CGFloat = 112
     static let approval: CGFloat = 236
@@ -227,6 +239,12 @@ enum AssistantMetrics {
     /// The island window is 320 pt tall.
     static let maxHeight: CGFloat = 320
 
+    /// Height left for the scrollable reply in a long finished card: the full panel minus the
+    /// top row, the file rows, the buttons, the bar row and the footer.
+    static func replyHeight(files: Int) -> CGFloat {
+        max(60, maxHeight - (finishedBase - 40) - finishedBar - CGFloat(min(files, maxFileRows)) * fileRow)
+    }
+
     static func height(for content: AssistantPanelContent) -> CGFloat {
         let h: CGFloat
         switch content {
@@ -234,7 +252,8 @@ enum AssistantMetrics {
         case .approval: h = approval
         case .blocked: h = blocked
         case .question(let rows): h = questionBase + CGFloat(max(1, rows)) * questionRow
-        case .finished(let files): h = finishedBase + finishedBar + CGFloat(min(files, maxFileRows)) * fileRow
+        case .finished(_, true): h = maxHeight
+        case .finished(let files, false): h = finishedBase + finishedBar + CGFloat(min(files, maxFileRows)) * fileRow
         case .diff: h = diff
         }
         return min(h, maxHeight)

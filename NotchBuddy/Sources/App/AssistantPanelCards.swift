@@ -280,7 +280,7 @@ struct AssistantBlockedCard: View {
     /// The last failed step, else the final line, else the last thing it did.
     private var detail: String {
         if let failed = session.steps.last(where: { $0.hasPrefix("⚠") }) { return failed }
-        if let line = session.finalLine, !line.isEmpty { return line }
+        if let text = session.reply, !text.isEmpty { return DiffEngine.toOneLine(text) }
         return session.steps.last(where: { !$0.isDiffStep }) ?? "No details were reported."
     }
 }
@@ -312,10 +312,21 @@ struct AssistantFinishedCard: View {
                 .frame(height: AssistantMetrics.diff - 100 - 30, alignment: .topLeading)
         } else {
             VStack(alignment: .leading, spacing: 6) {
-                Text(headline)
-                    .font(.system(size: 15, weight: .semibold))
-                    .lineLimit(2)
-                    .truncationMode(.tail)
+                if AssistantReply.isLong(session.reply), let reply = session.reply {
+                    // The whole reply, formatted, in a scroll view sized to what the panel has left.
+                    ScrollView(.vertical, showsIndicators: true) {
+                        ChatMarkdownView(markdown: reply)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.trailing, 10)
+                    }
+                    .frame(height: AssistantMetrics.replyHeight(files: files.count))
+                } else {
+                    Text(headline)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .textSelection(.enabled)
+                }
 
                 ForEach(files.prefix(AssistantMetrics.maxFileRows)) { file in
                     Button {
@@ -360,7 +371,7 @@ struct AssistantFinishedCard: View {
     }
 
     private var headline: String {
-        if let line = session.finalLine?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty { return line }
+        if let text = session.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
         return "Done."
     }
 }

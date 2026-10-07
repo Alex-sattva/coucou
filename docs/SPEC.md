@@ -91,7 +91,7 @@ Dès qu'au moins une **session d'agent** existe (Claude Code, OpenCode, Codex, G
 - **permission** : nombre d'étapes faites, puis « Can I run … ? » avec **Deny** et **Allow ⏎** (« Always » masqué pour Codex) ; hauteur 236 ;
 - **question** : les options de `AskQuestion` en boutons, plus texte libre si la question le permet ; hauteur = lignes d'options + 120 environ ;
 - **bloqué** : « I hit an error I can't get past on my own. », la dernière étape en échec ou l'erreur en monospace, et **Open in terminal** (pas de « Try again » : Claude Code ne se relance pas d'ici) ; hauteur 262 ;
-- **terminé** : la dernière phrase de l'agent (ou « Done. »), les fichiers modifiés (`nom +A −R`, ⌘E ouvre la carte diff livrée) et **Got it** ; la carte se replie seule après 8 s sauf survol ou focus de la barre.
+- **terminé** : la réponse de l'agent (ou « Done. »). Une réponse courte (une ligne, 110 caractères au plus) s'affiche en titre ; une réponse plus longue s'affiche en entier, mise en forme (Markdown), dans une zone qui défile, et le panneau prend toute la hauteur (320 pt). Puis les fichiers modifiés (`nom +A −R`, ⌘E ouvre la carte diff livrée) et **Got it**. Une carte courte se replie seule après 8 s sauf survol ou focus de la barre ; une carte longue reste jusqu'à **Got it** ou Échap.
 - **barre invoquée sans besoin** : seule la rangée de la barre (hauteur 112).
 Les décisions passent toujours par la voie unique `HookServer.sendApprovalDecision(_:sessionId:)` / `sendQuestionAnswers(_:sessionId:)` : plusieurs permissions ou questions peuvent attendre en même temps, chacune avec son propre délai de 115 s. Entrée n'accepte qu'une permission **visible dans le panneau ouvert** : jamais d'approbation à l'aveugle.
 

@@ -685,8 +685,9 @@ final class HookServer: @unchecked Sendable {
             applySession(.notification(payload["message"] as? String ?? ""), payload: payload)
         case "Stop":
             let raw = (payload["last_assistant_message"] as? String) ?? (payload["message"] as? String) ?? ""
-            let line = DiffEngine.toOneLine(raw)
-            applySession(.stop(finalLine: line.isEmpty ? nil : line), payload: payload)
+            // Keep the whole reply: the panel's finished card shows it in full (scrollable).
+            let text = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20_000))
+            applySession(.stop(reply: text.isEmpty ? nil : text), payload: payload)
         case "StopFailure":
             applySession(.stopFailure, payload: payload)
         case "Interrupt":

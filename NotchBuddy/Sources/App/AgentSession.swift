@@ -26,7 +26,7 @@ struct AgentSession: Identifiable, Equatable, Sendable {
     var phase: SessionPhase
     var steps: [String]
     var lastPrompt: String?
-    var finalLine: String?
+    var reply: String?             // the agent's full last message (Stop's last_assistant_message)
     var attentionAt: Date?         // set when phase enters approval/question/blocked/finished
     var finishedSeen: Bool
     var lastEventAt: Date
@@ -34,7 +34,7 @@ struct AgentSession: Identifiable, Equatable, Sendable {
 
 enum SessionEvent: Sendable {
     case start, end, prompt(String), toolStart(step: String), toolEnd, toolFailed(step: String)
-    case approvalRequested, questionAsked, notification(String), stop(finalLine: String?), stopFailure
+    case approvalRequested, questionAsked, notification(String), stop(reply: String?), stopFailure
     case interrupt
 }
 
@@ -57,7 +57,7 @@ struct AgentSessionStore: Equatable, Sendable {
         var session = sessions[sessionId] ?? AgentSession(
             id: sessionId, kind: kind, cwd: cwd,
             workspace: Self.workspaceName(cwd), colorHex: colorHex,
-            phase: .idle, steps: [], lastPrompt: nil, finalLine: nil,
+            phase: .idle, steps: [], lastPrompt: nil, reply: nil,
             attentionAt: nil, finishedSeen: false, lastEventAt: now)
 
         // Hooks can start mid-session with an empty cwd; adopt a real one when it shows up.
@@ -74,7 +74,7 @@ struct AgentSessionStore: Equatable, Sendable {
             break // handled above
         case .prompt(let text):
             session.lastPrompt = text
-            session.finalLine = nil
+            session.reply = nil
             session.finishedSeen = false
             session.steps = [] // "N steps done" counts the current turn
             Self.setPhase(&session, .thinking, now: now)
@@ -97,8 +97,8 @@ struct AgentSessionStore: Equatable, Sendable {
             } else if message.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") {
                 Self.setPhase(&session, .question, now: now)
             }
-        case .stop(let line):
-            session.finalLine = line
+        case .stop(let text):
+            session.reply = text
             session.finishedSeen = false
             Self.setPhase(&session, .finished, now: now)
         case .stopFailure:

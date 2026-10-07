@@ -46,12 +46,12 @@ enum AgentSessionTests {
         do {
             var s = AgentSessionStore()
             send(&s, .toolStart(step: "old"))
-            send(&s, .stop(finalLine: "done"))
+            send(&s, .stop(reply: "done"))
             send(&s, .prompt("fix the bug"), now: at(5))
             let a = s.sessions["s1"]!
             checkEq("prompt -> thinking", a.phase, .thinking)
             checkEq("lastPrompt stored", a.lastPrompt, "fix the bug")
-            checkTrue("finalLine cleared", a.finalLine == nil)
+            checkTrue("reply cleared", a.reply == nil)
             checkTrue("finishedSeen reset", a.finishedSeen == false)
             checkTrue("attention cleared when leaving finished", a.attentionAt == nil)
             checkTrue("steps restart for the new turn", a.steps.isEmpty)
@@ -117,18 +117,18 @@ enum AgentSessionTests {
         do {
             var s = AgentSessionStore()
             send(&s, .prompt("go"))
-            send(&s, .stop(finalLine: "All done"), now: at(7))
+            send(&s, .stop(reply: "All done"), now: at(7))
             var a = s.sessions["s1"]!
             checkEq("stop -> finished", a.phase, .finished)
-            checkEq("finalLine stored", a.finalLine, "All done")
+            checkEq("reply stored", a.reply, "All done")
             checkEq("finished stamps attention", a.attentionAt, at(7))
             checkTrue("unseen", a.finishedSeen == false)
             s.markSeen("s1")
             checkTrue("markSeen flips finishedSeen", s.sessions["s1"]?.finishedSeen == true)
             s.markSeen("nope") // no crash on unknown id
-            send(&s, .stop(finalLine: nil), now: at(9))
+            send(&s, .stop(reply: nil), now: at(9))
             a = s.sessions["s1"]!
-            checkTrue("stop without a line -> finalLine nil (OpenCode idle)", a.finalLine == nil)
+            checkTrue("stop without a line -> reply nil (OpenCode idle)", a.reply == nil)
             checkTrue("a new stop makes it unseen again", a.finishedSeen == false)
 
             var f = AgentSessionStore()
@@ -154,7 +154,7 @@ enum AgentSessionTests {
             var s = AgentSessionStore()
             send(&s, .prompt("a"), id: "one", cwd: "/code/same")
             send(&s, .prompt("b"), id: "two", cwd: "/code/same")
-            send(&s, .stop(finalLine: "x"), id: "one")
+            send(&s, .stop(reply: "x"), id: "one")
             checkEq("two sessions in one folder stay separate", s.sessions.count, 2)
             checkEq("events hit only their own session", s.sessions["two"]?.phase, .thinking)
             checkEq("and the other one finished", s.sessions["one"]?.phase, .finished)
@@ -170,7 +170,7 @@ enum AgentSessionTests {
             send(&p, .approvalRequested, id: "held", now: t0)
             send(&p, .questionAsked, id: "asking", now: t0)
             send(&p, .toolStart(step: "x"), id: "busy", now: t0)
-            send(&p, .stop(finalLine: nil), id: "done", now: t0)
+            send(&p, .stop(reply: nil), id: "done", now: t0)
             send(&p, .stopFailure, id: "blocked", now: t0)
             send(&p, .toolStart(step: "x"), id: "fresh", now: at(890))
             p.prune(now: at(900), idleFor: 900)

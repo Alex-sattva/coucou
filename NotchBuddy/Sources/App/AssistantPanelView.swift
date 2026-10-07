@@ -123,7 +123,8 @@ struct AssistantPanelView: View {
     }
 
     private func foldKey(content: AssistantPanelContent, main: AgentSession?) -> FoldKey? {
-        guard case .finished = content, let main else { return nil }
+        // A long reply stays until "Got it" or Esc: nobody reads it in 8 s.
+        guard case .finished(_, false) = content, let main else { return nil }
         if hovering || barFocused || voice.isActive { return nil }
         return FoldKey(sessionId: main.id, attentionAt: main.attentionAt)
     }
