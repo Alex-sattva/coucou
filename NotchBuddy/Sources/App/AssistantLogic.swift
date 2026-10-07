@@ -293,6 +293,8 @@ enum AssistantBarLogic {
     }
 
     static let noFolderCopy = "Open a project window first"
+    /// Tasks from the bar are real work; chat keeps OpenCodeChat's 120 s default.
+    static let taskTimeout: TimeInterval = 60 * 60
     static let noModelCopy = "No OpenCode model set. Pick one in Settings."
     static let cliMissingCopy = "OpenCode CLI not found. Install it, then try again."
 

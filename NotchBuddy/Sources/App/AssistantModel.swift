@@ -287,8 +287,10 @@ final class AssistantModel: ObservableObject {
         dismiss()
         Task { [weak self] in
             do {
+                // Real work: allow up to an hour instead of chat's 2 minutes.
                 try await OpenCodeChat.run(prompt: prompt, model: model,
-                                           cwd: URL(fileURLWithPath: cwd))
+                                           cwd: URL(fileURLWithPath: cwd),
+                                           timeout: AssistantBarLogic.taskTimeout)
             } catch {
                 let message = (error as? OpenCodeChat.ChatError)?.message ?? error.localizedDescription
                 appendAppLog("nb.log", "assistant bar: OpenCode task failed: \(message)")

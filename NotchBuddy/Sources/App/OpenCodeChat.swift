@@ -334,7 +334,9 @@ enum OpenCodeChat {
     // MARK: One-shot run
 
     /// Runs `opencode run --format json --standalone --model <model> <prompt>`.
-    /// - Timeout: 120s (kills the child on expiry).
+    /// - Timeout: `timeout` seconds, 120 by default (kills the child on expiry); nil = no limit.
+    ///   Chat keeps 120 s; tasks from the assistant bar are real work and get longer.
+    /// - Output is drained while the child runs, so a long run can never block on a full pipe.
     /// - Env: sandboxed TMPDIR/XDG_DATA_HOME so the provenance-locked default
     ///   log dir can never crash the call. Sandbox auth is seeded first so Zen
     ///   gateway models can authenticate.
@@ -347,7 +349,8 @@ enum OpenCodeChat {
     ///   can SIGTERM it through `stop(runId)` / `stopAll()`.
     @discardableResult
     static func run(prompt: String, model: String, cwd: URL? = nil,
-                    runId: UUID = UUID()) async throws -> OpenCodeRunResult {
+                    runId: UUID = UUID(),
+                    timeout: TimeInterval? = 120) async throws -> OpenCodeRunResult {
         guard let cli = cliURL() else { throw ChatError.cliNotFound }
         if let cwd = cwd {
             var isDir: ObjCBool = false
@@ -376,6 +379,11 @@ enum OpenCodeChat {
             let errPipe = Pipe()
             proc.standardOutput = outPipe
             proc.standardError = errPipe
+            // Drain both pipes as data arrives: a child that fills a 64 KB pipe buffer blocks
+            // forever, which only the old 120 s watchdog used to hide.
+            let outBuf = PipeBuffer(), errBuf = PipeBuffer()
+            outBuf.attach(outPipe)
+            errBuf.attach(errPipe)
             proc.standardInput = FileHandle.nullDevice
             do { try proc.run() } catch {
                 cont.resume(throwing: ChatError.failed(error.localizedDescription))
@@ -384,16 +392,19 @@ enum OpenCodeChat {
             // Registry is MainActor-owned, hence the hop. It refuses a child
             // that already exited, so a late hop can never leak an entry.
             Task { @MainActor in OpenCodeRunRegistry.shared.register(runId, proc) }
-            // Watchdog: kill after 120s. A DispatchSourceTimer IS Sendable, so
+            // Watchdog: kill after `timeout`. A DispatchSourceTimer IS Sendable, so
             // it can be captured by the @Sendable termination handler cleanly.
-            let watchdog = DispatchSource.makeTimerSource(queue: .global())
-            watchdog.schedule(deadline: .now() + 120)
-            watchdog.setEventHandler { if proc.isRunning { proc.terminate() } }
-            watchdog.resume()
+            let watchdog: DispatchSourceTimer? = timeout.map { limit in
+                let timer = DispatchSource.makeTimerSource(queue: .global())
+                timer.schedule(deadline: .now() + limit)
+                timer.setEventHandler { if proc.isRunning { proc.terminate() } }
+                timer.resume()
+                return timer
+            }
             proc.terminationHandler = { _ in
-                watchdog.cancel()
+                watchdog?.cancel()
                 let status = proc.terminationStatus
-                let out = outPipe.fileHandleForReading.readDataToEndOfFile()
+                let out = outBuf.finish(outPipe)
                 // Parse on the background thread; only the stop verdict needs
                 // the MainActor registry.
                 let outcome: Result<OpenCodeRunResult, Error>
@@ -413,7 +424,7 @@ enum OpenCodeChat {
                     // opencode writes JSONL errors to stdout even on exit 1
                     // (e.g. {"type":"error","error":{"message":"Model unavailable: …"}}),
                     // with stderr empty — parse stdout first to surface the real cause.
-                    let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(),
+                    let err = String(data: errBuf.finish(errPipe),
                                      encoding: .utf8)?
                         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     var stdoutMsg: String? = nil
@@ -613,5 +624,29 @@ enum OpenCodeChat {
                 state.view = .note
             }
         }
+    }
+}
+
+/// Reads a pipe to end-of-file on a background queue while the child runs, so the child can
+/// never block on a full pipe buffer, and hands back everything once it has exited.
+final class PipeBuffer: @unchecked Sendable {
+    private let done = DispatchGroup()
+    private var data = Data()
+
+    func attach(_ pipe: Pipe) {
+        done.enter()
+        let handle = pipe.fileHandleForReading
+        DispatchQueue.global(qos: .utility).async { [self] in
+            // Returns at EOF: when the child (the only writer left) exits.
+            data = handle.readDataToEndOfFile()
+            done.leave()
+        }
+    }
+
+    /// Waits for the reader to reach end-of-file and returns all output. Call after the child
+    /// has exited (from the termination handler), never on the main thread.
+    func finish(_ pipe: Pipe) -> Data {
+        done.wait()
+        return data
     }
 }
