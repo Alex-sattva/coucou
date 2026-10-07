@@ -178,20 +178,6 @@ struct AssistantTopRow: View {
     }
 }
 
-extension AgentKind {
-    var displayName: String {
-        switch self {
-        case .claudeCode:   return "Claude Code"
-        case .openCode:     return "OpenCode"
-        case .codex:        return "Codex"
-        case .gemini:       return "Gemini"
-        case .cursor:       return "Cursor"
-        case .antigravity:  return "Antigravity"
-        case .other:        return "Agent"
-        }
-    }
-}
-
 /// Agent kind name with the session's colour dot.
 struct AssistantAgentChip: View {
     let session: AgentSession
@@ -244,9 +230,12 @@ struct AssistantBarField: View {
 
     var body: some View {
         let folder = model.taskFolder
+        let target = model.barTarget
         let placeholder = voice.isActive
             ? "Listening…"
-            : folder.map { "New OpenCode task in \($0.workspace)…" } ?? AssistantBarLogic.noFolderCopy
+            : folder.map { AssistantBarLogic.placeholder(target: target, workspace: $0.workspace) }
+                ?? AssistantBarLogic.noFolderCopy
+        let tag = folder == nil ? nil : AssistantBarLogic.tag(target: target, main: model.mainSession)
         VStack(alignment: .leading, spacing: 1) {
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
@@ -254,6 +243,14 @@ struct AssistantBarField: View {
                 .focused(focused)
                 .disabled(folder == nil || voice.isActive)
                 .onSubmit { model.submitTask(text) }
+            // Says plainly where the text goes: the same chat, or a new OpenCode session.
+            if let tag, model.barError == nil {
+                Text(tag)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: target == .newTask ? "#8C919B" : "#34D399"))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             if let error = model.barError {
                 Text(error)
                     .font(.system(size: 11.5))

@@ -30,6 +30,35 @@ enum AssistantLogicTests {
     static func ids(_ list: [AgentSession]) -> [String] { list.map(\.id) }
 
     static func main() {
+        print("AssistantBarLogic.target / placeholder / tag")
+        do {
+            func oc(_ phase: SessionPhase) -> AgentSession {
+                var s = sess("ses_1", workspace: "ads-video", phase: phase); s.kind = .openCode; return s
+            }
+            checkEq("no main: new task", AssistantBarLogic.target(main: nil), .newTask)
+            checkEq("finished OpenCode: reply in the same chat",
+                    AssistantBarLogic.target(main: oc(.finished)), .reply(sessionId: "ses_1"))
+            checkEq("idle OpenCode: reply in the same chat",
+                    AssistantBarLogic.target(main: oc(.idle)), .reply(sessionId: "ses_1"))
+            checkEq("busy OpenCode: new task (no second prompt into a running chat)",
+                    AssistantBarLogic.target(main: oc(.working)), .newTask)
+            checkEq("OpenCode waiting on a question: new task",
+                    AssistantBarLogic.target(main: oc(.question)), .newTask)
+            checkEq("finished Claude Code: new task (Coucou cannot type into it)",
+                    AssistantBarLogic.target(main: sess("c", phase: .finished)), .newTask)
+            checkEq("reply placeholder", AssistantBarLogic.placeholder(target: .reply(sessionId: "x"), workspace: "ads-video"),
+                    "Reply in this OpenCode chat…")
+            checkEq("new task placeholder", AssistantBarLogic.placeholder(target: .newTask, workspace: "ads-video"),
+                    "New OpenCode task in ads-video…")
+            checkEq("reply tag", AssistantBarLogic.tag(target: .reply(sessionId: "x"), main: oc(.finished)), "same chat")
+            checkEq("new task under Claude Code says it is not sent there",
+                    AssistantBarLogic.tag(target: .newTask, main: sess("c", phase: .finished)),
+                    "new OpenCode session · not sent to Claude Code")
+            checkTrue("new task under a busy OpenCode chat: no tag",
+                      AssistantBarLogic.tag(target: .newTask, main: oc(.working)) == nil)
+            checkTrue("no main: no tag", AssistantBarLogic.tag(target: .newTask, main: nil) == nil)
+        }
+
         print("MainAgentPicker")
         do {
             checkTrue("no sessions -> nil",

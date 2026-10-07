@@ -350,7 +350,9 @@ enum OpenCodeChat {
     @discardableResult
     static func run(prompt: String, model: String, cwd: URL? = nil,
                     runId: UUID = UUID(),
-                    timeout: TimeInterval? = 120) async throws -> OpenCodeRunResult {
+                    timeout: TimeInterval? = 120,
+                    sessionId: String? = nil,
+                    userStore: Bool = false) async throws -> OpenCodeRunResult {
         guard let cli = cliURL() else { throw ChatError.cliNotFound }
         if let cwd = cwd {
             var isDir: ObjCBool = false
@@ -359,15 +361,23 @@ enum OpenCodeChat {
                 throw ChatError.workingDirectoryUnavailable(cwd.path)
             }
         }
-        ensureSandboxAuth()
+        // `userStore`: run against the user's own OpenCode data (their history), so the session
+        // can be continued later and an existing one (`sessionId`) can be found. Chat keeps the
+        // throwaway /tmp store so quick questions never land in the user's history.
+        if !userStore { ensureSandboxAuth() }
         return try await withCheckedThrowingContinuation { cont in
             let proc = Process()
             proc.executableURL = cli
-            proc.arguments = ["run", "--format", "json", "--standalone", "--model", model, prompt]
+            // `--session` continues that conversation (same history) instead of starting a new one.
+            proc.arguments = ["run", "--format", "json", "--standalone", "--model", model]
+                + (sessionId.map { ["--session", $0] } ?? [])
+                + [prompt]
             var env = ProcessInfo.processInfo.environment
             env["TMPDIR"] = "/tmp"
-            env["XDG_DATA_HOME"] = "/tmp/opencode-data"
-            env["XDG_STATE_HOME"] = "/tmp/opencode-state"
+            if !userStore {
+                env["XDG_DATA_HOME"] = "/tmp/opencode-data"
+                env["XDG_STATE_HOME"] = "/tmp/opencode-state"
+            }
             // OPENCODE_API_KEY env overrides per-provider auth; the Zen key
             // authorizes both gateways, the stored Go key is revoked (401).
             if let zenKey = zenAPIKey(), !zenKey.isEmpty {

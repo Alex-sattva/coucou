@@ -204,16 +204,21 @@ final class AssistantModel: ObservableObject {
                                  sessions: Array(sessions.values))
     }
 
+    /// Where the bar's text goes right now: the same OpenCode chat, or a new OpenCode task.
+    var barTarget: AssistantBarLogic.Target { AssistantBarLogic.target(main: mainSession) }
+
     func clearBarError() {
         if barError != nil { barError = nil }
     }
 
-    /// Enter in the bar. Starts an `opencode` process in the main session's folder and closes the
-    /// panel. Never talks to a Claude Code / Codex session.
+    /// Enter in the bar. Continues the main OpenCode chat when it is done (`barTarget`), otherwise
+    /// starts a new `opencode` session in the main session's folder; closes the panel either way.
+    /// Never talks to a Claude Code / Codex session.
     /// A failure shows in `barError` and the bar keeps its text.
     func submitTask(_ text: String) {
         // Cheap checks first; the CLI lookup can spawn `which`, so it runs off the main actor.
         let folder = taskFolder
+        let target = barTarget          // decided at Enter, before the panel changes
         let modelId = state.opencodeChatModel
         let pre = AssistantBarLogic.check(text: text, folder: folder, model: modelId, cliAvailable: true)
         switch pre {
@@ -233,7 +238,7 @@ final class AssistantModel: ObservableObject {
                     if case .error(let message) = final { self.barError = message }
                     return
                 }
-                self.launchTask(prompt: prompt, model: modelId, cwd: cwd)
+                self.launchTask(prompt: prompt, model: modelId, cwd: cwd, target: target)
             }
             return
         }
@@ -283,14 +288,21 @@ final class AssistantModel: ObservableObject {
         if VoiceInput.shared.isActive { finishVoice(send: true) } else { startVoice() }
     }
 
-    private func launchTask(prompt: String, model: String, cwd: String) {
+    private func launchTask(prompt: String, model: String, cwd: String,
+                            target: AssistantBarLogic.Target) {
+        let sessionId: String? = { if case .reply(let id) = target { return id } else { return nil } }()
         dismiss()
         Task { [weak self] in
             do {
                 // Real work: allow up to an hour instead of chat's 2 minutes.
                 try await OpenCodeChat.run(prompt: prompt, model: model,
                                            cwd: URL(fileURLWithPath: cwd),
-                                           timeout: AssistantBarLogic.taskTimeout)
+                                           timeout: AssistantBarLogic.taskTimeout,
+                                           // A reply continues that conversation; both kinds run
+                                           // in the user's own OpenCode store so they can be
+                                           // continued later and show in their history.
+                                           sessionId: sessionId,
+                                           userStore: true)
             } catch {
                 let message = (error as? OpenCodeChat.ChatError)?.message ?? error.localizedDescription
                 appendAppLog("nb.log", "assistant bar: OpenCode task failed: \(message)")

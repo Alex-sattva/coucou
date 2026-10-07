@@ -286,6 +286,38 @@ enum AssistantBarLogic {
         return inContext.map { AssistantTaskFolder(cwd: $0.cwd, workspace: $0.workspace) }
     }
 
+    /// Where the bar's text goes. Only an OpenCode session that is done (finished or idle) can be
+    /// continued — a busy one would get two prompts at once, and Coucou cannot type into a Claude
+    /// Code / Codex session at all, so those always get a NEW OpenCode task in the same folder.
+    enum Target: Equatable, Sendable {
+        case reply(sessionId: String)    // `opencode run --session <id>`: same conversation
+        case newTask                     // a fresh OpenCode session in the folder
+    }
+
+    static func target(main: AgentSession?) -> Target {
+        guard let main, main.kind == .openCode,
+              main.phase == .finished || main.phase == .idle else { return .newTask }
+        return .reply(sessionId: main.id)
+    }
+
+    /// The bar's placeholder for a target ("Listening…" and the no-folder copy are handled by the view).
+    static func placeholder(target: Target, workspace: String) -> String {
+        switch target {
+        case .reply: return "Reply in this OpenCode chat…"
+        case .newTask: return "New OpenCode task in \(workspace)…"
+        }
+    }
+
+    /// The small tag beside the field: says plainly where the text goes. nil when obvious.
+    static func tag(target: Target, main: AgentSession?) -> String? {
+        switch target {
+        case .reply: return "same chat"
+        case .newTask:
+            guard let main, main.kind != .openCode else { return nil }
+            return "new OpenCode session · not sent to \(main.kind.displayName)"
+        }
+    }
+
     enum Check: Equatable, Sendable {
         case ignore                      // empty or whitespace: nothing happens
         case error(String)               // one line shown in the bar, nothing launched

@@ -148,3 +148,17 @@ struct AgentSessionStore: Equatable, Sendable {
         session.phase = phase
     }
 }
+
+extension AgentKind {
+    var displayName: String {
+        switch self {
+        case .claudeCode:   return "Claude Code"
+        case .openCode:     return "OpenCode"
+        case .codex:        return "Codex"
+        case .gemini:       return "Gemini"
+        case .cursor:       return "Cursor"
+        case .antigravity:  return "Antigravity"
+        case .other:        return "Agent"
+        }
+    }
+}
