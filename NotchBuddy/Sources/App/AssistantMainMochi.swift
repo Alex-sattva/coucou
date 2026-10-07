@@ -50,7 +50,9 @@ struct AssistantMainMochi: View {
                              diameter: max(1, canvas),
                              hopToken: model.hopToken,
                              isPaused: !visible,
-                             showsDecor: inPanel,
+                             // No ring/halo anywhere: in the panel the wash carries the colour,
+                             // and the ring is sized to the canvas, so it dwarfs the body.
+                             showsDecor: false,
                              blend: model.colorBlendRate)
                 .frame(width: canvas, height: canvas)
             if !inPanel, let hex = session?.statusDotHex {
