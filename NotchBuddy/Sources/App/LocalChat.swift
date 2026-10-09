@@ -35,6 +35,12 @@ enum LocalChat {
         return s
     }
 
+    /// The OpenAI-compatible base of a stored server address: `<address>/v1`. One rule for Chat and Mochi's brain.
+    static func openAIBase(_ raw: String) -> String {
+        let n = normaliseURL(raw)
+        return n.isEmpty ? "" : n + "/v1"
+    }
+
     // MARK: SSE parsing
 
     /// Parses `delta.content` from one OpenAI-SSE event line.
@@ -146,7 +152,7 @@ enum LocalChat {
         model: String,
         onToken: @MainActor @escaping (String) -> Void
     ) async throws -> String {
-        guard let url = URL(string: "\(baseURL)/v1/chat/completions") else {
+        guard let url = URL(string: "\(Self.openAIBase(baseURL))/chat/completions") else {
             throw LocalChatError.serverUnreachable(baseURL)
         }
 

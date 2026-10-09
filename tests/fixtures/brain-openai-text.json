@@ -1,0 +1,1 @@
+{"id":"chatcmpl-9def","object":"chat.completion","model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"Nairobi."},"finish_reason":"stop"}]}

@@ -1,0 +1,1 @@
+{"id":"chatcmpl-ol","object":"chat.completion","model":"llama3.2","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"call_o","type":"function","function":{"name":"report","arguments":{"line":"Done."}}}]},"finish_reason":"tool_calls"}]}

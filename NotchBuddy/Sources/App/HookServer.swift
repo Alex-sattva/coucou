@@ -51,11 +51,9 @@ final class HookServer: @unchecked Sendable {
     // session id, so a decision for session A can only ever be written to session A's fd.
     // `closeHeld(_:sending:)` is the ONE place that writes a decision or answer to a held fd.
 
-    private struct HeldFD {
-        let fd: Int32
-        /// Read source watching the fd for EOF (the editor handled the request itself).
-        /// Its cancel handler closes the fd — never close a held fd anywhere else.
-        let source: any DispatchSourceRead
+    private struct HeldRequest {
+        /// Where the answer goes: today the held `nb-hook` connection (`PendingRequestResponder`).
+        let responder: PendingRequestResponder
         /// Pill that owns the request; "" for a plain-terminal session (no pill).
         let pillId: String
         /// The hook payload, kept to update the session store when the request resolves.
@@ -65,21 +63,62 @@ final class HookServer: @unchecked Sendable {
     private static let approvalTimeout: TimeInterval = 115
     private static let questionTimeout: TimeInterval = 120
 
-    private var heldApprovals = PendingRequests<HeldFD>()
-    private var heldQuestions = PendingRequests<HeldFD>()
+    private var heldApprovals = PendingRequests<HeldRequest>()
+    private var heldQuestions = PendingRequests<HeldRequest>()
 
-    /// Writes `line` (when given) to the held fd, then cancels its source, whose cancel handler
-    /// closes the fd. With no line the fd is closed without a decision: nb-hook reads EOF, prints
+    /// Delivers `outcome` (when given) to whoever is waiting on the request, then lets go of it. For a
+    /// hook connection that writes one line to the fd, then cancels its source, whose cancel handler
+    /// closes the fd. With no outcome the fd is closed without a decision: nb-hook reads EOF, prints
     /// nothing, and Claude Code / Codex asks in its own terminal.
     @MainActor
-    private func closeHeld(_ held: HeldFD, sending line: String?) {
-        let fd = held.fd
-        let source = held.source
-        guard let line else { source.cancel(); return }
-        Task.detached { [weak self] in
-            // Write while the fd is still valid, then cancel the source so its handler closes it.
-            self?.sendLine(fd: fd, text: line)
-            DispatchQueue.main.async { source.cancel() }
+    private func closeHeld(_ held: HeldRequest, sending outcome: RequestOutcome?) {
+        switch held.responder {
+        case .hook(let connection):
+            let fd = connection.fd
+            let source = connection.source
+            guard let outcome else { source.cancel(); return }
+            let line = Self.hookLine(for: outcome)
+            Task.detached {
+                // Write while the fd is still valid, then cancel the source so its handler closes it.
+                Self.writeLine(fd: fd, text: line)
+                DispatchQueue.main.async { source.cancel() }
+            }
+        #if !APPSTORE
+        case .openCode(let target):
+            // No outcome: the request was settled elsewhere, so there is nothing to send.
+            if let outcome { target.deliver(outcome) }
+        #endif
+        case .brain(let box):
+            // The brain's question: the chosen label, or "dismissed" for anything else.
+            if case .answered(let answers)? = outcome, let first = answers.values.first {
+                let choice = (first as? String) ?? (first as? [String])?.first ?? ""
+                box.resolve(choice.isEmpty ? BrainAnswerBox.dismissed : "The user chose: \(choice)")
+            } else {
+                box.resolve(BrainAnswerBox.dismissed)
+            }
+        }
+    }
+
+    /// An OpenCode worker's request has no terminal to be answered in: "ask" parks it (it stays pending).
+    private static func parksOnAsk(_ held: HeldRequest) -> Bool {
+        #if !APPSTORE
+        if case .openCode = held.responder { return true }
+        #endif
+        return false
+    }
+
+    /// The one line `nb-hook` reads back for an outcome. Byte for byte what the cards always sent.
+    private static func hookLine(for outcome: RequestOutcome) -> String {
+        switch outcome {
+        case .allow:  return #"{"permissionDecision":"allow"}"#
+        case .always: return #"{"permissionDecision":"always"}"#
+        case .deny:   return #"{"permissionDecision":"deny"}"#
+        case .ask:    return #"{"permissionDecision":"ask"}"#
+        case .answered(let answers):
+            if let data = try? JSONSerialization.data(withJSONObject: ["permissionDecision": "answer", "answers": answers],
+                                                       options: .withoutEscapingSlashes),
+               let text = String(data: data, encoding: .utf8) { return text }
+            return #"{"permissionDecision":"ask"}"#
         }
     }
 
@@ -132,17 +171,17 @@ final class HookServer: @unchecked Sendable {
     /// Removes only `sessionId`'s approval and closes its fd (writing `line` first when given).
     /// Returns nil when that session has nothing pending (late decision, already timed out).
     @MainActor
-    private func releaseApproval(sessionId: String, sending line: String?) -> HeldFD? {
+    private func releaseApproval(sessionId: String, sending outcome: RequestOutcome?) -> HeldRequest? {
         guard let entry = heldApprovals.remove(sessionId: sessionId) else { return nil }
         AppState.shared.pendingApprovals[sessionId] = nil
-        closeHeld(entry.value, sending: line)
+        closeHeld(entry.value, sending: outcome)
         return entry.value
     }
 
     /// Cleanup shared by every way an approval can end: pill state, session phase, focus, island view.
     /// `updateSession` is false when a hook event already moved the session store on (PostToolUse, Stop…).
     @MainActor
-    private func settleApproval(_ held: HeldFD, note: String?, updateSession: Bool) {
+    private func settleApproval(_ held: HeldRequest, note: String?, updateSession: Bool) {
         let state = AppState.shared
         let pillId = held.pillId
         if updateSession { applySession(.toolEnd, payload: held.payload) }
@@ -170,15 +209,15 @@ final class HookServer: @unchecked Sendable {
     // MARK: - Question fd helpers
 
     @MainActor
-    private func releaseQuestion(sessionId: String, sending line: String?) -> HeldFD? {
+    private func releaseQuestion(sessionId: String, sending outcome: RequestOutcome?) -> HeldRequest? {
         guard let entry = heldQuestions.remove(sessionId: sessionId) else { return nil }
         AppState.shared.pendingQuestions[sessionId] = nil
-        closeHeld(entry.value, sending: line)
+        closeHeld(entry.value, sending: outcome)
         return entry.value
     }
 
     @MainActor
-    private func settleQuestion(_ held: HeldFD, note: String, updateSession: Bool) {
+    private func settleQuestion(_ held: HeldRequest, note: String, updateSession: Bool) {
         let state = AppState.shared
         let pillId = held.pillId
         if updateSession { applySession(.toolEnd, payload: held.payload) }
@@ -199,14 +238,7 @@ final class HookServer: @unchecked Sendable {
     /// No-op when the session's question is already gone.
     @MainActor
     func sendQuestionAnswers(_ answers: [String: Any], sessionId: String) {
-        let line: String?
-        if let data = try? JSONSerialization.data(withJSONObject: ["permissionDecision": "answer", "answers": answers],
-                                                   options: .withoutEscapingSlashes) {
-            line = String(data: data, encoding: .utf8)
-        } else {
-            line = nil
-        }
-        guard let held = releaseQuestion(sessionId: sessionId, sending: line) else { return }
+        guard let held = releaseQuestion(sessionId: sessionId, sending: .answered(answers)) else { return }
         settleQuestion(held, note: "", updateSession: true)
     }
 
@@ -214,14 +246,15 @@ final class HookServer: @unchecked Sendable {
     /// Sends "ask" immediately to unblock nb-hook; does NOT navigate (view already changed).
     @MainActor
     func releaseQuestionFD(sessionId: String) {
-        _ = releaseQuestion(sessionId: sessionId, sending: #"{"permissionDecision":"ask"}"#)
+        _ = releaseQuestion(sessionId: sessionId, sending: .ask)
     }
 
     /// Called by QuestionView "Reply in terminal" button.
     @MainActor
     func sendQuestionAsk(sessionId: String) {
-        guard let held = releaseQuestion(sessionId: sessionId, sending: #"{"permissionDecision":"ask"}"#) else { return }
-        settleQuestion(held, note: "", updateSession: true)
+        guard let held = releaseQuestion(sessionId: sessionId, sending: .ask) else { return }
+        // A parked worker request is still pending: its session stays in the needs-you phase.
+        settleQuestion(held, note: "", updateSession: !Self.parksOnAsk(held))
     }
 
     /// Returns the tool_input serialized as sorted-keys JSON, "" if absent or empty.
@@ -340,6 +373,32 @@ final class HookServer: @unchecked Sendable {
             return
         }
 
+        // A Mochi worker's MCP client (`nb-hook --mcp`): one JSON-RPC message in, one line back.
+        // The connection is held until MochiMCP answers, then closed.
+        if coucouKind == "mcp" {
+            // Plain bytes cross to the main actor, not the parsed dictionary.
+            let rpcData = (payload["rpc"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0) } ?? Data("{}".utf8)
+            let runtime = payload["coucou_runtime"] as? String ?? ""
+            let owner = payload["coucou_owner"] as? String ?? ""
+            let role = payload["coucou_role"] as? String ?? "worker"
+            #if APPSTORE
+            sendLine(fd: fd, text: #"{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"Not available in this version"}}"#)
+            close(fd)
+            #else
+            Task { @MainActor in
+                let rpc = (try? JSONSerialization.jsonObject(with: rpcData)) as? [String: Any] ?? [:]
+                let reply = await MochiMCP.handle(rpc: rpc, role: role, runtime: runtime, owner: owner)
+                let text = reply.flatMap { try? JSONSerialization.data(withJSONObject: $0, options: .withoutEscapingSlashes) }
+                    .flatMap { String(data: $0, encoding: .utf8) }
+                Task.detached {
+                    if let text { Self.writeLine(fd: fd, text: text) }
+                    close(fd)
+                }
+            }
+            #endif
+            return
+        }
+
         // AskUserQuestion via --ask PreToolUse hook — hold fd open like PermissionRequest
         if coucouKind == "ask_user_question" {
             let toolInput = payload["tool_input"] as? [String: Any] ?? [:]
@@ -374,10 +433,14 @@ final class HookServer: @unchecked Sendable {
 
     @MainActor
     private func processEvent(name: String, payload: [String: Any]) {
+        if isWorkerPluginEvent(payload) { return }
         let state = AppState.shared
         let sessionId = payload["session_id"] as? String
                      ?? payload["conversation_id"] as? String
                      ?? "unknown"
+        // A Mochi worker reports with its `report` tool before the turn ends (`MochiMCP`); the
+        // session store already holds that note when `Stop` arrives.
+        let mochiLine = state.sessionStore.sessions[sessionId]?.mochi?.line
         let cwd = payload["cwd"] as? String ?? ""
         let rawName = URL(fileURLWithPath: cwd).lastPathComponent
         let projectName = aliasProjectName(rawName.isEmpty ? "Session" : rawName)
@@ -508,7 +571,7 @@ final class HookServer: @unchecked Sendable {
             state.updateTask(id: agentId, state: .finished)
             let rawFinal = (payload["last_assistant_message"] as? String)
                 ?? (payload["message"] as? String) ?? ""
-            let finalText = DiffEngine.toOneLine(rawFinal)
+            let finalText = mochiLine ?? DiffEngine.toOneLine(rawFinal)
             if !finalText.isEmpty {
                 appendStep(id: agentId, step: finalText)
                 if let idx = state.tasks.firstIndex(where: { $0.id == agentId }) {
@@ -516,7 +579,8 @@ final class HookServer: @unchecked Sendable {
                 }
             }
             SoundEngine.shared.play("finish")
-            SoundEngine.shared.playVoice("mochi_02")
+            // The recorded clip would talk over Mochi's spoken line (only when updates are read aloud).
+            if mochiLine == nil || !state.speakMochiUpdates { SoundEngine.shared.playVoice("mochi_02") }
             if focused {
                 expandIfNeeded(to: .finished)
             } else {
@@ -689,7 +753,14 @@ final class HookServer: @unchecked Sendable {
             let text = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(20_000))
             applySession(.stop(reply: text.isEmpty ? nil : text), payload: payload)
         case "StopFailure":
-            applySession(.stopFailure, payload: payload)
+            // Claude Code: `error` is the kind, `last_assistant_message` the error text it showed
+            // ("You've hit your session limit · resets 5pm"). The OpenCode plugin sends `message`.
+            let text = [payload["last_assistant_message"], payload["message"], payload["error_details"]]
+                .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+            applySession(.stopFailure(kind: payload["error"] as? String,
+                                      message: text.map { String($0.prefix(2_000)) }),
+                         payload: payload)
         case "Interrupt":
             applySession(.interrupt, payload: payload)
         default:
@@ -803,6 +874,13 @@ final class HookServer: @unchecked Sendable {
 
     @MainActor
     private func processPermissionRequest(fd: Int32, payload: [String: Any]) {
+        if isWorkerPluginEvent(payload) {
+            Task.detached { [weak self] in
+                self?.sendLine(fd: fd, text: #"{"permissionDecision":"ask"}"#)
+                close(fd)
+            }
+            return
+        }
         let state = AppState.shared
         let sessionId = payload["session_id"] as? String
                      ?? payload["conversation_id"] as? String
@@ -870,16 +948,27 @@ final class HookServer: @unchecked Sendable {
 
         let command = toolInput["command"] as? String ?? tool
 
+        // Auto mode: the user opted in (Settings → Agents → Permissions) to let non-sensitive actions through.
+        if state.permissionMode == "auto",
+           !PermissionPolicy.isSensitive(tool: tool, input: toolInput, cwd: cwd) {
+            nbLog("PermissionRequest auto-allowed \(tool)")
+            Task.detached { [weak self] in
+                self?.sendLine(fd: fd, text: #"{"permissionDecision":"allow"}"#)
+                close(fd)
+            }
+            return
+        }
+
         // One request per session: if this session is somehow still waiting on an older one, that
         // older one falls back to the terminal prompt ("ask"). Other sessions are never touched.
-        _ = releaseApproval(sessionId: sessionId, sending: #"{"permissionDecision":"ask"}"#)
+        _ = releaseApproval(sessionId: sessionId, sending: .ask)
 
         // Monitor fd: if the editor closes the connection (handled externally), dismiss the card.
         // The cancel handler closes the fd — never close it anywhere else.
         let subject = noteSubject(for: pillId)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         let now = Date()
-        heldApprovals.insert(HeldFD(fd: fd, source: source, pillId: pillId, payload: payload),
+        heldApprovals.insert(HeldRequest(responder: .hook(HookConnection(fd: fd, source: source)), pillId: pillId, payload: payload),
                              sessionId: sessionId, now: now)
         guard let seq = heldApprovals.entry(for: sessionId)?.seq else { return }
         source.setEventHandler { [weak self] in
@@ -912,6 +1001,13 @@ final class HookServer: @unchecked Sendable {
         // nb-hook reads EOF from the cancel handler's close and exits; Claude Code / Codex re-asks.
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.approvalTimeout) { [weak self] in
             guard let self, self.heldApprovals.entry(for: sessionId)?.seq == seq else { return }
+            // A Mochi worker has no terminal to ask in: the request is skipped. Say so on the session
+            // (its finished card shows it), and in the note.
+            if WorkerManager.shared.isWorker(sessionId) {
+                self.applySession(.approvalMissed(command: command), payload: payload)
+                self.dismissApproval(sessionId: sessionId, note: "No answer in time: the worker skipped that request.", updateSession: true)
+                return
+            }
             self.dismissApproval(sessionId: sessionId, note: "Still waiting in \(subject).", updateSession: true)
         }
     }
@@ -920,21 +1016,104 @@ final class HookServer: @unchecked Sendable {
     /// cleans up. No-op when the session's request is already gone (timed out, handled elsewhere).
     @MainActor
     func sendApprovalDecision(_ decision: String, sessionId: String) {
-        let json: String
+        let outcome: RequestOutcome
         switch decision {
-        case "allow":  json = #"{"permissionDecision":"allow"}"#
-        case "always": json = #"{"permissionDecision":"always"}"#
-        case "ask":    json = #"{"permissionDecision":"ask"}"#
-        default:       json = #"{"permissionDecision":"deny"}"#
+        case "allow":  outcome = .allow
+        case "always": outcome = .always
+        case "ask":    outcome = .ask
+        default:       outcome = .deny
         }
-        guard let held = releaseApproval(sessionId: sessionId, sending: json) else { return }
-        settleApproval(held, note: nil, updateSession: true)
+        guard let held = releaseApproval(sessionId: sessionId, sending: outcome) else { return }
+        var parked = false
+        if case .ask = outcome { parked = Self.parksOnAsk(held) }
+        settleApproval(held, note: nil, updateSession: !parked)
+    }
+
+    // MARK: - Requests from Mochi's own workers (OpenCode runtime)
+
+    /// Feeds one session event from a worker runtime into the store, as a hook event would.
+    @MainActor
+    func feed(_ event: SessionEvent, sessionId: String, cwd: String, agent: String) {
+        applySession(event, payload: ["session_id": sessionId, "cwd": cwd, "coucou_agent": agent])
+    }
+
+    /// The step text the strip and the failure card show for a tool (same labels as Claude Code's).
+    @MainActor
+    func stepLabel(tool: String, input: [String: Any]) -> String {
+        frenchStep(tool: tool, input: input)
+    }
+
+    /// Opens the approval card for a request that is answered through `responder`, not a hook.
+    @MainActor
+    func presentApproval(sessionId: String, cwd: String, tool: String, command: String,
+                         responder: PendingRequestResponder, silent: Bool = false) {
+        let state = AppState.shared
+        // Another source's request for this session is dropped without a reply: never rejected.
+        _ = releaseApproval(sessionId: sessionId, sending: nil)
+        let payload: [String: Any] = ["session_id": sessionId, "cwd": cwd, "coucou_agent": "opencode"]
+        let now = Date()
+        heldApprovals.insert(HeldRequest(responder: responder, pillId: "", payload: payload),
+                             sessionId: sessionId, now: now)
+        state.pendingApprovals[sessionId] = ApprovalInfo(sessionId: sessionId, tool: tool, command: command,
+                                                         inputKey: "", pillId: "", arrivedAt: now)
+        // `silent`: a parked request shown again because the user selected the worker.
+        guard !silent else { return }
+        state.isPinned = true
+        SoundEngine.shared.play("approval")
+        expandIfNeeded(to: .approval)
+    }
+
+    @MainActor
+    func presentQuestion(sessionId: String, cwd: String, question: AskQuestion,
+                         responder: PendingRequestResponder, agent: String = "opencode", silent: Bool = false) {
+        let state = AppState.shared
+        _ = releaseQuestion(sessionId: sessionId, sending: nil)
+        let payload: [String: Any] = ["session_id": sessionId, "cwd": cwd, "coucou_agent": agent]
+        let now = Date()
+        heldQuestions.insert(HeldRequest(responder: responder, pillId: "", payload: payload),
+                             sessionId: sessionId, now: now)
+        state.pendingQuestions[sessionId] = PendingQuestion(sessionId: sessionId, question: question,
+                                                            pillId: "", arrivedAt: now)
+        guard !silent else { return }
+        state.isPinned = true
+        SoundEngine.shared.play("approval")
+        expandIfNeeded(to: .question)
+    }
+
+    /// The worker's request was settled without the card (answered in another client, the turn
+    /// ended): drop the card, send nothing. No-op when nothing is pending for the session.
+    @MainActor
+    func dismissWorkerApproval(sessionId: String) {
+        dismissApproval(sessionId: sessionId, note: "", updateSession: false)
+    }
+
+    @MainActor
+    func dismissWorkerQuestion(sessionId: String) {
+        guard let held = releaseQuestion(sessionId: sessionId, sending: nil) else { return }
+        settleQuestion(held, note: "", updateSession: false)
+    }
+
+    /// A hook event that an OpenCode worker's runtime already reports itself (the plugin running
+    /// inside Mochi's own `opencode serve`). The runtime is the only source of truth for those
+    /// sessions, so no approval is shown or answered twice.
+    @MainActor
+    private func isWorkerPluginEvent(_ payload: [String: Any]) -> Bool {
+        guard (payload["coucou_agent"] as? String) == "opencode",
+              let id = Self.sessionId(of: payload) else { return false }
+        return WorkerManager.shared.isLiveOpenCodeWorker(id)
     }
 
     // MARK: - Question request
 
     @MainActor
     private func processQuestionRequest(fd: Int32, parsed: AskQuestion, payload: [String: Any]) {
+        if isWorkerPluginEvent(payload) {
+            Task.detached { [weak self] in
+                self?.sendLine(fd: fd, text: #"{"permissionDecision":"ask"}"#)
+                close(fd)
+            }
+            return
+        }
         let state = AppState.shared
         let sessionId = payload["session_id"] as? String
                      ?? payload["conversation_id"] as? String
@@ -971,11 +1150,11 @@ final class HookServer: @unchecked Sendable {
         }
 
         // One question per session: an older one from the same session falls back to the terminal.
-        _ = releaseQuestion(sessionId: sessionId, sending: #"{"permissionDecision":"ask"}"#)
+        _ = releaseQuestion(sessionId: sessionId, sending: .ask)
 
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .main)
         let now = Date()
-        heldQuestions.insert(HeldFD(fd: fd, source: source, pillId: pillId, payload: payload),
+        heldQuestions.insert(HeldRequest(responder: .hook(HookConnection(fd: fd, source: source)), pillId: pillId, payload: payload),
                              sessionId: sessionId, now: now)
         guard let seq = heldQuestions.entry(for: sessionId)?.seq else { return }
         source.setEventHandler { [weak self] in
@@ -1005,7 +1184,7 @@ final class HookServer: @unchecked Sendable {
         // 120s safety timeout, per question: send "ask" so nb-hook exits cleanly; Claude Code re-asks in terminal.
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.questionTimeout) { [weak self] in
             guard let self, self.heldQuestions.entry(for: sessionId)?.seq == seq else { return }
-            guard let held = self.releaseQuestion(sessionId: sessionId, sending: #"{"permissionDecision":"ask"}"#) else { return }
+            guard let held = self.releaseQuestion(sessionId: sessionId, sending: .ask) else { return }
             self.settleQuestion(held, note: "", updateSession: true)
         }
     }
@@ -1200,7 +1379,10 @@ final class HookServer: @unchecked Sendable {
         appendAppLog("nb.log", message)
     }
 
-    private func sendLine(fd: Int32, text: String) {
+    private func sendLine(fd: Int32, text: String) { Self.writeLine(fd: fd, text: text) }
+
+    /// Writes `text` and a newline to a socket. Safe from any thread.
+    fileprivate static func writeLine(fd: Int32, text: String) {
         let bytes = Array((text + "\n").utf8)
         bytes.withUnsafeBytes { buffer in
             var sent = 0
@@ -1230,6 +1412,9 @@ final class HookServer: @unchecked Sendable {
         let pyURL = wrapperURL.deletingLastPathComponent().appendingPathComponent("nb-hook.py")
         try? nbHookPythonGitHub.write(to: pyURL, atomically: true, encoding: .utf8)
         _ = try? FileManager.default.setAttributes([.posixPermissions: 0o755 as NSNumber], ofItemAtPath: pyURL.path)
+        // The note OpenCode workers read as instructions (OpenCode takes files, not text).
+        let noteURL = wrapperURL.deletingLastPathComponent().appendingPathComponent(MochiTools.workerNoteFileName)
+        try? MochiTools.workerNote.write(to: noteURL, atomically: true, encoding: .utf8)
         #endif
     }
 
@@ -1238,6 +1423,13 @@ final class HookServer: @unchecked Sendable {
     /// Returns true if settings.json has a Coucou hook that needs updating:
     /// either a PermissionRequest hook with timeout < 120s, or the AskUserQuestion
     /// PreToolUse matcher is missing (requires Claude Code 2.1.85+).
+    /// Coucou's hook is in `~/.claude/settings.json` (the test is `ClaudeHookCheck`, same as `hooksNeedUpdate` uses).
+    static func claudeHooksInstalled() -> Bool {
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
+        let settings = (try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        return ClaudeHookCheck.isInstalled(settings: settings)
+    }
+
     static func hooksNeedUpdate() -> Bool {
         let settingsURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/settings.json")
@@ -2055,6 +2247,14 @@ private let nbHookShellWrapper = """
 #!/bin/sh
 # Coucou hook relay — always exits 0, never blocks Claude Code
 HOOK_DIR="$(dirname "$0")"
+# MCP mode (Mochi's workers): a long-lived stdio server. Its stdout must stream, so it is not
+# captured like the one-shot hooks below.
+if [ "$1" = "--mcp" ]; then
+    if xcode-select -p >/dev/null 2>&1; then
+        exec /usr/bin/python3 "$HOOK_DIR/nb-hook.py" "$@"
+    fi
+    exit 0
+fi
 if xcode-select -p >/dev/null 2>&1; then
     out=$(/usr/bin/python3 "$HOOK_DIR/nb-hook.py" "$@" 2>/dev/null)
     rc=$?
@@ -2109,7 +2309,66 @@ def normalize_tool_fields(payload):
             if sid:
                 payload['session_id'] = sid
 
+def mcp_error(msg_id, text):
+    return json.dumps({'jsonrpc': '2.0', 'id': msg_id, 'error': {'code': -32000, 'message': text}})
+
+def run_mcp():
+    # MCP stdio server for Mochi's workers: each JSON-RPC line goes to Coucou over the socket and the
+    # answer line is printed. Notifications get no answer. The owner comes from the environment
+    # Coucou gave the agent, never from the model.
+    env = os.environ
+    socket_path = os.path.expanduser('~/Library/Application Support/NotchBuddy/nb.sock')
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(msg, dict) or 'method' not in msg:
+            continue
+        is_request = 'id' in msg
+        envelope = {
+            'coucou_kind': 'mcp',
+            'coucou_role': env.get('COUCOU_ROLE', 'worker'),
+            'coucou_runtime': env.get('COUCOU_RUNTIME', ''),
+            'coucou_owner': env.get('COUCOU_OWNER', ''),
+            'rpc': msg,
+        }
+        if msg.get('method') == 'tools/call':
+            # The brain's ask_user waits for the user: an hour. A worker's report answers at once.
+            timeout = 3600 if env.get('COUCOU_ROLE') == 'brain' else 30
+        else:
+            timeout = 5
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            s.connect(socket_path)
+            s.sendall((json.dumps(envelope) + '\n').encode())
+            if is_request:
+                buf = b''
+                while b'\n' not in buf:
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+                s.close()
+                reply = buf.split(b'\n')[0].decode().strip()
+                out = reply if reply else mcp_error(msg['id'], 'Coucou did not answer')
+                sys.stdout.write(out + '\n')
+                sys.stdout.flush()
+            else:
+                s.close()
+        except Exception:
+            if is_request:
+                sys.stdout.write(mcp_error(msg['id'], 'Coucou is not running') + '\n')
+                sys.stdout.flush()
+
 def main():
+    if '--mcp' in sys.argv[1:]:
+        run_mcp()
+        return
     raw = b''
     payload = {}
     try:

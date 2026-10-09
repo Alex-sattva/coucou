@@ -15,5 +15,8 @@ mkdir -p "$MODULE_CACHE"
 swiftc -swift-version 6 -strict-concurrency=complete \
     NotchBuddy/Sources/App/AgentSession.swift \
     NotchBuddy/Sources/App/AssistantLogic.swift \
+    NotchBuddy/Sources/App/AskQuestion.swift \
+    NotchBuddy/Sources/App/OpenCodeEvents.swift \
+    NotchBuddy/Sources/App/SafeWebURL.swift \
     tests/AssistantLogicTests.swift -o "$TEST_DIR/assistant-logic-tests"
 "$TEST_DIR/assistant-logic-tests"

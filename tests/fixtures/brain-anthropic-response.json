@@ -1,0 +1,15 @@
+{
+  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-4-6",
+  "content": [
+    {"type": "text", "text": "I'll find the project first."},
+    {"type": "tool_use", "id": "toolu_01A09q90qw90lq917835lq9", "name": "list_projects", "input": {}},
+    {"type": "tool_use", "id": "toolu_01B1xyz", "name": "start_project_work",
+     "input": {"project": "coucou", "task": "Add a README section about setup", "runtime": "claude"}}
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 612, "output_tokens": 94}
+}

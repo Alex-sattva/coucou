@@ -512,8 +512,8 @@ struct IslandContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: state.view == .confused)
 
             ZStack {
-                // The home is the assistant panel, drawn by IslandContainer, not stacked here.
-                ForEach(IslandView.allCases.filter { $0 != .overview }, id: \.self) { v in
+                // When home is the assistant panel, IslandContainer draws it instead of this view.
+                ForEach(IslandView.allCases, id: \.self) { v in
                     let active = state.view == v
                     // Views that fill available height instead of the fixed 98pt content frame:
                     // chat (prompt) is always flexible; mail is flexible only when active so
@@ -572,16 +572,16 @@ struct IslandHeader: View {
                 }
                 #endif
                 HStack(spacing: 14) {
+                    // Straight to the Settings window: one place for every setting.
                     Button(action: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            state.view = .settings
-                        }
+                        NotificationCenter.default.post(name: .openFullSettings, object: nil)
                     }) {
-                        Image(systemName: state.view == .settings ? "gearshape.fill" : "gearshape")
+                        Image(systemName: "gearshape")
                             .font(.system(size: 14))
-                            .foregroundColor(state.view == .settings ? Color(hex: "#F5F6F8") : Color(hex: "#8E939C"))
+                            .foregroundColor(Color(hex: "#8E939C"))
                     }
                     .buttonStyle(.plain)
+                    .help("Settings")
 
                     Button(action: { state.soundEnabled.toggle() }) {
                         Image(systemName: state.soundEnabled ? "speaker.wave.2" : "speaker.slash")

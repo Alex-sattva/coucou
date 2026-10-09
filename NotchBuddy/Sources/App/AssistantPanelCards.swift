@@ -28,13 +28,19 @@ struct AssistantApprovalCard: View {
                 .font(.system(size: 12.5))
                 .foregroundColor(PanelColor.faint)
 
-            HStack(spacing: 10) {
-                question
-                    .font(.system(size: 13.5))
-                    .foregroundColor(PanelColor.amberText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                // The whole command, wrapped: what is approved must be readable, never cut.
+                // A very long one scrolls inside the box.
+                ScrollView(.vertical, showsIndicators: true) {
+                    question
+                        .font(.system(size: 13.5))
+                        .foregroundColor(PanelColor.amberText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 66)
+                HStack(spacing: 10) {
+                Spacer(minLength: 0)
                 SecondaryButton("Deny") { decide("deny") }
                 // Codex rejects updatedPermissions, so "Always" is not offered (same rule as ApprovalView).
                 if info.pillId != "agent_codex" {
@@ -44,6 +50,7 @@ struct AssistantApprovalCard: View {
                 // (a SwiftUI default action fires nowhere else), so nothing approves blind.
                 PrimaryButton("Allow", kbd: "⏎") { decide("allow") }
                     .keyboardShortcut(.defaultAction)
+                }
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .background(PanelColor.amberFill)
@@ -112,24 +119,37 @@ struct AssistantQuestionCard: View {
                             .font(.system(size: 10.5))
                             .foregroundColor(PanelColor.faint)
                     }
-                    Button("Reply in terminal") {
+                    Button {
                         HookServer.shared.sendQuestionAsk(sessionId: pending.sessionId)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "terminal").font(.system(size: 10))
+                            Text("Reply in terminal")
+                        }
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 10.5))
                     .foregroundColor(PanelColor.faint)
-                    .underline()
                 }
                 .frame(height: 14)
 
-                Text(item.question)
-                    .font(.system(size: 13.5, weight: .semibold))
-                    .lineLimit(2)
-                    .frame(height: 34, alignment: .topLeading)
-
-                ForEach(Array(item.options.enumerated()), id: \.offset) { idx, opt in
-                    optionRow(opt, idx: idx, qi: qi, item: item, isLast: isLast)
+                // Question and descriptions wrap in full, never cut; when they don't fit the
+                // island, they scroll (with a visible scroll bar so the rest can be found).
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(item.question)
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 4)
+                            .padding(.bottom, 8)
+                        ForEach(Array(item.options.enumerated()), id: \.offset) { idx, opt in
+                            optionRow(opt, idx: idx, qi: qi, item: item, isLast: isLast)
+                        }
+                    }
+                    .padding(.trailing, 10)   // room for the scroll bar
                 }
+                .frame(maxHeight: .infinity)
 
                 otherRow(qi: qi, item: item, isLast: isLast, chosen: chosen)
             }
@@ -147,24 +167,28 @@ struct AssistantQuestionCard: View {
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundColor(PanelColor.faint)
                     .frame(width: 14)
-                Text(opt.label)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundColor(selected ? Color(hex: "#67E8F9") : PanelColor.text)
-                if !opt.description.isEmpty {
-                    Text(opt.description)
-                        .font(.system(size: 11.5))
-                        .foregroundColor(PanelColor.faint)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                // Label on top, its description under it: side by side, the description was cut off.
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(opt.label)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(selected ? Color(hex: "#67E8F9") : PanelColor.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !opt.description.isEmpty {
+                        Text(opt.description)
+                            .font(.system(size: 11))
+                            .foregroundColor(PanelColor.faint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 0)
             }
-            .frame(height: AssistantMetrics.questionRow)
+            .padding(.vertical, 5)
+            .frame(minHeight: AssistantMetrics.questionRow - 2)
             .padding(.horizontal, 8)
             .background(selected ? Color(hex: "#22D3EE").opacity(0.16) : Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 7))
             .padding(.vertical, 1)
-            .frame(height: AssistantMetrics.questionRow)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .keyboardShortcut(KeyEquivalent(Character(String(idx + 1))), modifiers: [])
@@ -190,7 +214,8 @@ struct AssistantQuestionCard: View {
                     Text("Other…")
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundColor(PanelColor.dim)
-                        .padding(.horizontal, 8)
+                        .padding(.leading, 30)   // lines up with the option labels
+                        .padding(.trailing, 8)
                         .frame(height: AssistantMetrics.questionRow)
                 }
                 .buttonStyle(.plain)
@@ -250,16 +275,18 @@ struct AssistantBlockedCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("I hit an error I can't get past on my own.")
+            Text(session.failure?.headline ?? SessionFailure().headline)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(PanelColor.red)
 
-            Text(detail)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(Color(hex: "#E8E9EC"))
-                .lineLimit(3)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(detail)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(Color(hex: "#E8E9EC"))
+                    .fixedSize(horizontal: false, vertical: true)   // the full error, scrolling if long
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 64)
                 .padding(.horizontal, 10).padding(.vertical, 8)
                 .background(Color.white.opacity(0.06))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06)))
@@ -277,8 +304,10 @@ struct AssistantBlockedCard: View {
         }
     }
 
-    /// The last failed step, else the final line, else the last thing it did.
+    /// What the agent said about the failure, else the last failed step, else the final line,
+    /// else the last thing it did.
     private var detail: String {
+        if let message = session.failure?.message, !message.isEmpty { return message }
         if let failed = session.steps.last(where: { $0.hasPrefix("⚠") }) { return failed }
         if let text = session.reply, !text.isEmpty { return DiffEngine.toOneLine(text) }
         return session.steps.last(where: { !$0.isDiffStep }) ?? "No details were reported."
@@ -290,88 +319,198 @@ struct AssistantBlockedCard: View {
 struct AssistantFinishedCard: View {
     let session: AgentSession
     @ObservedObject var model: AssistantModel
-    @State private var diffPath: String?
 
     var body: some View {
-        content
-            // ⌘E (shipping shortcut) toggles the diff of the first changed file.
-            .onReceive(NotificationCenter.default.publisher(for: .islandToggleDiff)) { _ in
-                let files = model.changedFiles(for: session.id)
-                guard !files.isEmpty || model.showsDiff else { return }
-                if model.showsDiff { model.setShowsDiff(false) }
-                else { diffPath = files.first?.path; model.setShowsDiff(true) }
+        let actions = model.mochiActions(for: session)
+        VStack(alignment: .leading, spacing: 6) {
+            // One line in Mochi's own words; the whole report is one click away (Open session).
+            // Changed files and diffs are not shown here: they belong in the session itself.
+            Text(headline)
+                .font(.system(size: 15, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)   // wraps in full, never cut
+                .textSelection(.enabled)
+
+            if !actions.isEmpty {
+                // Next steps the session suggested for Mochi (`MochiAware`); each runs on click only.
+                HStack(spacing: 6) {
+                    ForEach(actions) { action in
+                        MochiActionChip(action: action) { model.perform(action, in: session) }
+                    }
+                }
+                .frame(height: AssistantMetrics.actionRow - 4, alignment: .leading)
             }
-    }
 
-    @ViewBuilder
-    private var content: some View {
-        let files = model.changedFiles(for: session.id)
-        if model.showsDiff, let file = files.first(where: { $0.path == diffPath }) ?? files.first {
-            DiffCardView(diff: file.diff, onDismiss: { model.setShowsDiff(false) })
-                .padding(.leading, -36)          // DiffCardView reserves 108 pt for the old bot column
-                .frame(height: AssistantMetrics.diff - 100 - 30, alignment: .topLeading)
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                if AssistantReply.isLong(session.reply), let reply = session.reply {
-                    // The whole reply, formatted, in a scroll view sized to what the panel has left.
-                    ScrollView(.vertical, showsIndicators: true) {
-                        ChatMarkdownView(markdown: reply)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.trailing, 10)
-                    }
-                    .frame(height: AssistantMetrics.replyHeight(files: files.count))
-                } else {
-                    Text(headline)
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .textSelection(.enabled)
+            HStack(spacing: 8) {
+                if model.canViewSession(session) {
+                    SecondaryButton("Open session") { model.viewSession(session) }
                 }
-
-                ForEach(files.prefix(AssistantMetrics.maxFileRows)) { file in
-                    Button {
-                        diffPath = file.path
-                        model.setShowsDiff(true)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(file.name)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(Color(hex: "#C5C8CD"))
-                                .lineLimit(1)
-                            Text("+\(file.added)")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(Color(hex: "#22C55E"))
-                            Text("−\(file.removed)")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(Color(hex: "#F4505E"))
-                            Spacer(minLength: 0)
-                        }
-                        .frame(height: AssistantMetrics.fileRow - 3)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if files.count > AssistantMetrics.maxFileRows {
-                    Text("+\(files.count - AssistantMetrics.maxFileRows) more")
-                        .font(.system(size: 11))
-                        .foregroundColor(PanelColor.faint)
-                }
-
-                HStack(spacing: 8) {
-                    if !files.isEmpty {
-                        SecondaryButton("Open diff") {
-                            diffPath = files.first?.path
-                            model.setShowsDiff(true)
-                        }
-                    }
-                    PrimaryButton("Got it") { model.markSeen(session.id) }
-                }
-                .padding(.top, 2)
+                PrimaryButton("Got it") { model.markSeen(session.id) }
             }
+            .padding(.top, 2)
         }
     }
 
     private var headline: String {
-        if let text = session.reply?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
-        return "Done."
+        model.headline(for: session)
+    }
+}
+
+/// One suggested next step: an icon for what the click does, the label, and the full target
+/// (link, path, message) on hover so the user can check it before clicking.
+struct MochiActionChip: View {
+    let action: MochiAction
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10.5, weight: .semibold))
+                Text(action.label).font(.system(size: 11.5, weight: .medium)).lineLimit(1)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Color.white.opacity(0.09))
+            .foregroundColor(Color(hex: "#F1F2F4"))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(detail)
+    }
+
+    private var icon: String {
+        switch action.kind {
+        case .openURL: return "safari"
+        case .openFile: return "doc"
+        case .reveal: return "folder"
+        case .reply: return "arrow.turn.down.right"
+        case .copy: return "doc.on.doc"
+        case .focus: return "arrow.right.circle"
+        }
+    }
+
+    private var detail: String {
+        switch action.kind {
+        case .openURL(let s): return "Open \(s)"
+        case .openFile(let s): return "Open \(s)"
+        case .reveal(let s): return "Show \(s) in Finder"
+        case .reply(let s): return "Send to the session: \(s)"
+        case .copy(let s): return "Copy: \(s)"
+        case .focus: return "Show this session\u{2019}s card"
+        }
+    }
+}
+
+// MARK: - Launch
+
+/// "Start Claude Code in Bapoojee-production": shown after "work on <project>", nothing opens
+/// until the click. The other button switches the CLI for this launch only.
+struct AssistantLaunchCard: View {
+    let launch: PendingLaunch
+    @ObservedObject var model: AssistantModel
+    @ObservedObject private var state = AppState.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            (Text("Start ") + Text(launch.cli.displayName).foregroundColor(.white)
+                + Text(" in ") + Text(launch.project.name).foregroundColor(.white))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(PanelColor.dim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let prompt = launch.prompt {
+                // Shown in full: this is exactly what the new session receives first.
+                Text(prompt)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(Color(hex: "#E8E9EC"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            Text("\(displayPath) \u{00B7} opens in \(terminalName)")
+                .font(.system(size: 11.5))
+                .foregroundColor(PanelColor.faint)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                PrimaryButton(launch.prompt == nil ? "Start" : "Start and send") { model.confirmLaunch() }
+                    .keyboardShortcut(.defaultAction)
+                SecondaryButton("Use \(other.displayName) instead") { model.switchLaunchCLI() }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private var other: ProjectCLI { launch.cli == .claudeCode ? .openCode : .claudeCode }
+
+    private var displayPath: String {
+        let home = NSHomeDirectory()
+        let p = launch.project.path
+        return p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p
+    }
+
+    private var terminalName: String {
+        let t = TerminalApp(rawValue: state.terminalApp) ?? .terminal
+        return (t.appURL != nil ? t : .terminal).displayName
+    }
+}
+
+// MARK: - Clarify
+
+/// The router could not tell which project or session was meant. Rows look like the question
+/// card's options; everything wraps, nothing is cut off. 1–4 pick, Esc closes the panel.
+struct AssistantClarifyCard: View {
+    let clarify: PendingClarify
+    @ObservedObject var model: AssistantModel
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(clarify.question)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                ForEach(Array(clarify.choices.enumerated()), id: \.offset) { idx, choice in
+                    AssistantChoiceRow(number: idx + 1, label: choice.label) { model.pickClarify(idx) }
+                }
+            }
+            .padding(.trailing, 10)
+        }
+        .frame(maxHeight: .infinity)
+    }
+}
+
+/// One numbered, clickable row with a label that wraps in full.
+struct AssistantChoiceRow: View {
+    let number: Int
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text("\(number)")
+                    .font(.system(size: 10.5, design: .monospaced))
+                    .foregroundColor(PanelColor.faint)
+                    .frame(width: 14)
+                Text(label)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundColor(PanelColor.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 5)
+            .frame(minHeight: AssistantMetrics.questionRow - 2)
+            .padding(.horizontal, 8)
+            .background(Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .padding(.vertical, 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: [])
     }
 }
