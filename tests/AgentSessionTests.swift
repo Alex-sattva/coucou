@@ -133,9 +133,18 @@ enum AgentSessionTests {
 
             var f = AgentSessionStore()
             send(&f, .toolStart(step: "x"))
-            send(&f, .stopFailure, now: at(2))
+            send(&f, .stopFailure(kind: "rate_limit", message: "You\u{2019}ve hit your session limit"), now: at(2))
             checkEq("stopFailure -> blocked", f.sessions["s1"]?.phase, .blocked)
             checkEq("blocked stamped", f.sessions["s1"]?.attentionAt, at(2))
+            checkEq("failure kept", f.sessions["s1"]?.failure,
+                    SessionFailure(kind: "rate_limit", message: "You\u{2019}ve hit your session limit"))
+            checkTrue("usage limit says the session stopped",
+                      f.sessions["s1"]?.failure?.headline.contains("usage limit") == true
+                      && f.sessions["s1"]?.failure?.headline.contains("session stopped") == true)
+            checkEq("unknown kind keeps the old line", SessionFailure(kind: "unknown").headline,
+                    "I hit an error I can\u{2019}t get past on my own.")
+            send(&f, .prompt("again"), now: at(3))
+            checkTrue("a new prompt clears the failure", f.sessions["s1"]?.failure == nil)
 
             var i = AgentSessionStore()
             send(&i, .approvalRequested, now: at(1))
@@ -171,7 +180,7 @@ enum AgentSessionTests {
             send(&p, .questionAsked, id: "asking", now: t0)
             send(&p, .toolStart(step: "x"), id: "busy", now: t0)
             send(&p, .stop(reply: nil), id: "done", now: t0)
-            send(&p, .stopFailure, id: "blocked", now: t0)
+            send(&p, .stopFailure(), id: "blocked", now: t0)
             send(&p, .toolStart(step: "x"), id: "fresh", now: at(890))
             p.prune(now: at(900), idleFor: 900)
             checkTrue("prune keeps a held approval", p.sessions["held"] != nil)
@@ -180,6 +189,45 @@ enum AgentSessionTests {
             checkTrue("prune removes an idle finished session", p.sessions["done"] == nil)
             checkTrue("prune removes an idle blocked session", p.sessions["blocked"] == nil)
             checkTrue("prune keeps a recently active session", p.sessions["fresh"] != nil)
+        }
+
+        print("")
+        print("worker reports")
+        do {
+            var s = AgentSessionStore()
+            send(&s, .prompt("do it"))
+            send(&s, .toolStart(step: "Read x"))
+            let note = MochiNote(line: "Server is up.", actions: [MochiAction(label: "Open", kind: .openURL("http://localhost:8123"))])
+            send(&s, .mochiReport(note))
+            checkEq("the report sets the note", s.sessions["s1"]?.mochi, note)
+            checkEq("and keeps the phase", s.sessions["s1"]?.phase, .working)
+            send(&s, .stop(reply: "All done.", mochi: nil))
+            checkEq("a stop without a note keeps the report", s.sessions["s1"]?.mochi, note)
+            checkEq("the stop finishes the session", s.sessions["s1"]?.phase, .finished)
+            checkEq("with the reply", s.sessions["s1"]?.reply, "All done.")
+            let newer = MochiNote(line: "Second.", actions: [])
+            send(&s, .mochiReport(newer))
+            checkEq("two reports in a turn: the last wins", s.sessions["s1"]?.mochi, newer)
+            send(&s, .prompt("next"))
+            checkTrue("a new prompt clears the note", s.sessions["s1"]?.mochi == nil)
+            send(&s, .stop(reply: "x", mochi: newer))
+            checkEq("a stop that carries a note sets it", s.sessions["s1"]?.mochi, newer)
+        }
+
+        print("")
+        print("missed approvals")
+        do {
+            var s = AgentSessionStore()
+            send(&s, .prompt("do it"))
+            send(&s, .approvalRequested)
+            send(&s, .approvalMissed(command: "npm install"))
+            checkEq("the missed request is kept", s.sessions["s1"]?.missedApprovals, ["npm install"])
+            checkTrue("and shows as a step", s.sessions["s1"]?.steps.last?.contains("Skipped: npm install") == true)
+            checkTrue("the step reads as a warning", s.sessions["s1"]?.steps.last?.hasPrefix("\u{26A0}") == true)
+            send(&s, .stop(reply: "x", mochi: nil))
+            checkEq("it survives the stop", s.sessions["s1"]?.missedApprovals.count, 1)
+            send(&s, .prompt("next"))
+            checkEq("a new turn clears it", s.sessions["s1"]?.missedApprovals, [])
         }
 
         print("")

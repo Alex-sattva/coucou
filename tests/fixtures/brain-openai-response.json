@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-9abc",
+  "object": "chat.completion",
+  "created": 1741570283,
+  "model": "gpt-4o-2024-08-06",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {"id": "call_1", "type": "function", "function": {"name": "list_projects", "arguments": "{}"}},
+        {"id": "call_2", "type": "function",
+         "function": {"name": "start_project_work",
+                      "arguments": "{\"project\":\"coucou\",\"task\":\"Add a README section about setup\",\"runtime\":\"opencode\",\"model\":\"openai/gpt-5\"}"}}
+      ]
+    },
+    "finish_reason": "tool_calls"
+  }],
+  "usage": {"prompt_tokens": 540, "completion_tokens": 62, "total_tokens": 602}
+}
