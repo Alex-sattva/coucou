@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intent router plan</title>
+<style>
+  :root { --bg:#fbfbfa; --fg:#1d1f23; --dim:#5d636e; --line:#e3e4e7; --code:#f1f2f4; --accent:#2f6fde; --warn:#b4541a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141518; --fg:#e8e9ec; --dim:#9aa0aa; --line:#2b2e34; --code:#1d1f24; --accent:#7aa7ff; --warn:#f0a36b; } }
+  body { background:var(--bg); color:var(--fg); font:15px/1.6 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; margin:0; }
+  main { max-width:820px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:19px; margin:36px 0 8px; padding-top:12px; border-top:1px solid var(--line); }
+  h3 { font-size:16px; margin:24px 0 6px; } p, li { color:var(--fg); } .sub { color:var(--dim); margin:0 0 24px; }
+  code { background:var(--code); padding:1px 5px; border-radius:4px; font:13px ui-monospace, Menlo, monospace; }
+  pre { background:var(--code); padding:12px 14px; border-radius:8px; overflow-x:auto; font:12.5px/1.5 ui-monospace, Menlo, monospace; }
+  pre code { background:none; padding:0; }
+  .step { border:1px solid var(--line); border-radius:10px; padding:4px 16px 12px; margin:14px 0; }
+  .accept { border-left:3px solid var(--accent); padding:4px 12px; color:var(--dim); }
+  .donot li { color:var(--warn); }
+  ul.check { list-style:none; padding-left:0; } ul.check li::before { content:"☐  "; color:var(--dim); }
+</style>
+</head>
+<body>
+<main>
+<h1>Intent router — Claude now, Jev later</h1>
+<p class="sub">One decision step replaces the hand-written phrase rules. The brain is swappable: Rules (offline), Claude, and later Jev.</p>
+
+<h2>Goal</h2>
+<p>Today Mochi decides what to do with what you say through a growing pile of phrase rules. A <b>router</b> replaces them. It receives what you said plus the current state, and returns <b>one action from a fixed list</b>. Coucou's own code carries that action out. Jev slots in later as a third backend, touching nothing outside its own file.</p>
+
+<h2>Architecture</h2>
+<pre><code>bar Enter / voice end
+   └─ AssistantModel.submitTask(text)
+        └─ RouterInput (utterance + sessions + projects + mainId)        [pure]
+             └─ IntentRouter backend (Settings: Rules | Claude)
+                  ├─ ClaudeRouter — HTTP, 4 s timeout, any failure → RuleRouter
+                  └─ RuleRouter   — today's rules
+             └─ RouterDecision.validated(against: input)                 [pure]
+        └─ AssistantModel.execute(decision)
+             reply   → send to the session (unchanged path)
+             start   → existing confirm card (click required)
+             open    → open the session in the terminal
+             clarify → new clarify card, each choice = a concrete action
+             none    → "I'm not sure what to do with that"</code></pre>
+
+<h3>Types (pure, in AssistantLogic.swift)</h3>
+<pre><code>struct RouterInput { utterance, sessions: [RouterSession], projects: [RouterProject], mainSessionId }
+enum RouterAction {
+    case reply(sessionId, text)
+    case start(projectPath, cli?, prompt?)
+    case open(sessionId)
+    case clarify(question, choices: [RouterChoice])   // 2–4, never nested
+    case none
+}
+struct RouterDecision { action, source }   // "rules" | "claude"
+RouterDecision.validated(against:)         // unknown ids never reach execution</code></pre>
+
+<h3>Claude backend</h3>
+<ul>
+<li>Plain HTTP to the Messages API with the Anthropic key ClaudeService already stores in the Keychain.</li>
+<li>Model <code>claude-opus-5-5</code>, effort <code>low</code>, structured JSON output. No <code>thinking</code> field and no forced <code>tool_choice</code> (both rejected on this model). The model id is one constant.</li>
+<li><b>The schema is fixed.</b> Session ids and project paths are plain strings, checked against the real lists afterwards. Putting them in the schema would recompile it on every change.</li>
+<li>The prompt says to copy ids exactly, never to rewrite your words, and to prefer asking over guessing.</li>
+<li>Any failure (no key, 4 s timeout, network, refusal, bad JSON) falls back to Rules and logs one line. Your words are never logged.</li>
+</ul>
+
+<h3>What leaves the Mac</h3>
+<p>Only what you said; for each running session its id, agent, workspace, folder, phase, title and last prompt (up to 200 characters); up to 40 projects (name, path, last CLI); the main session id. No transcripts, replies or file contents.</p>
+
+<h2>Steps</h2>
+<div class="step"><h3>1 · Pure types, RuleRouter, validation</h3>
+<p>Add the types, <code>RuleRouter.decide</code> (today's behaviour, exactly) and <code>validated</code>.</p>
+<p><b>Account for:</b> filler-only text; a project named while a session runs (reply unless the text starts with a trigger); unknown ids in clarify choices; nested clarify; empty choices.</p>
+<p class="accept">Test script prints <code>All tests passed.</code>, with every action and every validation rule covered.</p></div>
+
+<div class="step"><h3>2 · Claude response parsing (pure)</h3>
+<p><code>ClaudeRouterParsing.decision(fromJSON:)</code> and <code>requestBody(input:)</code>, both testable without the network.</p>
+<p><b>Account for:</b> nulls where an action needs a field; an unknown CLI string; clarify inside choices; non-ASCII text; escaped slashes.</p>
+<p class="accept">Tests pass: one fixture per action, plus three malformed ones that throw.</p></div>
+
+<div class="step"><h3>3 · Backends + model wiring</h3>
+<p><code>IntentRouter.swift</code> holds the protocol, ClaudeRouter and RuleRouter. <code>submitTask</code> becomes build input → route (with fallback) → validate → execute.</p>
+<p><b>Gotchas:</b> the model runs on the main actor, so the HTTP call runs in a Task. The router never approves permissions or answers question cards.</p>
+<p class="accept">Builds. With Settings = Rules, nothing behaves differently from before.</p></div>
+
+<div class="step"><h3>4 · Clarify card</h3>
+<p>The question (wraps, never cut off) and 2–4 choice rows styled like the question card. Keys 1–4 pick, Esc closes. A "start" choice still goes through the confirm card. No footer.</p>
+<p class="accept">Tests pass, including a height test. Manual check 3.</p></div>
+
+<div class="step"><h3>5 · Settings + privacy</h3>
+<p>General → "Understanding": a Rules / Claude picker. Claude is disabled without a key. Default is Rules. Add a paragraph to <code>docs/privacy.html</code> saying what is sent.</p>
+<p class="accept">Builds; the picker shows; the privacy paragraph renders.</p></div>
+
+<h2>Manual verification</h2>
+<ol>
+<li>Nothing running: "In Bapoojee where is the document to send to the CEO" → confirm card with the sentence as first message.</li>
+<li>A coucou session running: "start the tests" → sent to that session, not a launch.</li>
+<li>"Work on the dashboard" with two matching projects → clarify card → pick one → confirm card.</li>
+<li>Wi-Fi off → behaves like Rules, with one fallback line in the log.</li>
+<li>Settings = Rules → identical to today.</li>
+</ol>
+
+<h2>Out of scope / Do NOT</h2>
+<ul class="donot">
+<li>No overseer behaviour. The router only acts on something you said.</li>
+<li>Never approve a permission, answer a question card or send an email from a router decision.</li>
+<li>No Jev code yet. Just keep the protocol free of Claude-specific types.</li>
+<li>No per-request schema enums, no streaming, no memory between utterances.</li>
+<li>Don't restyle existing cards. Don't touch the wake-word or ⌥ code.</li>
+<li>No telemetry. Never log what the user said.</li>
+</ul>
+
+<h2>Definition of Done</h2>
+<ul class="check">
+<li>Every step's acceptance check passes; the test script prints <code>All tests passed.</code></li>
+<li>Builds with the swiftc recipe and runs from /Applications.</li>
+<li>Manual checks 1–5 behave as written.</li>
+<li>Rules mode shows no regressions.</li>
+<li>Nothing in the Do-NOT list was done.</li>
+<li>Privacy page updated.</li>
+</ul>
+</main>
+</body>
+</html>

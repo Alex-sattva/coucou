@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant Layer Plan</title>
+<style>
+:root{--bg:#F7F7F5;--ink:#1B1C1F;--muted:#62666F;--line:#E1E2E5;--card:#FFFFFF;--code:#F0F1F3;--accent:#2F6BFF;--amber:#B7791F;--red:#C53030;--green:#2F855A;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121316;--ink:#ECEDEF;--muted:#9A9FA8;--line:#2B2E34;--card:#1A1C20;--code:#22252A;--accent:#7AA2FF;--amber:#F6AD55;--red:#FC8181;--green:#68D391}}
+:root[data-theme="dark"]{--bg:#121316;--ink:#ECEDEF;--muted:#9A9FA8;--line:#2B2E34;--card:#1A1C20;--code:#22252A;--accent:#7AA2FF;--amber:#F6AD55;--red:#FC8181;--green:#68D391}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.6 var(--font);-webkit-font-smoothing:antialiased}
+main{max-width:860px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:30px;line-height:1.15;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:21px;margin:44px 0 10px;padding-top:14px;border-top:1px solid var(--line);letter-spacing:-.01em}
+h3{font-size:17px;margin:28px 0 6px}
+p,li{color:var(--ink)} .muted{color:var(--muted)}
+code{font:13px var(--mono);background:var(--code);padding:1px 5px;border-radius:5px}
+pre{font:12.5px/1.55 var(--mono);background:var(--code);padding:14px 16px;border-radius:10px;overflow-x:auto}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:10px 0}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.meta{font-size:14px;color:var(--muted);margin:4px 0}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+.step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 18px 12px;margin:16px 0}
+.step h3{margin-top:12px}
+.lbl{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-right:6px}
+.acc{border-left:3px solid var(--green);padding-left:10px}
+.acct{border-left:3px solid var(--amber);padding-left:10px}
+.br{border-left:3px solid var(--red);padding-left:10px}
+.dont li{margin:3px 0}
+.dod li{list-style:none;margin:4px 0}
+.dod li::before{content:"☐ ";color:var(--muted)}
+nav{font-size:14px;margin:18px 0 0;display:flex;flex-wrap:wrap;gap:6px 14px}
+nav a{color:var(--accent);text-decoration:none}
+@media (max-width:600px){h1{font-size:24px} table{font-size:13px} th,td{padding:6px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Assistant layer: main Mochi + subagent crew</h1>
+<p class="meta">Repo <code>/Users/kepla/Desktop/code/coucou</code> · branch <code>feature/voice-harness</code> · macOS app only. Supersedes <code>TASKPLAN-voice-harness.md</code>.</p>
+<p class="muted">An implementation spec. It pins what can't be recovered from the code and leaves local naming and line-by-line shapes to the implementer. Better paths are welcome, as long as the deviation is reported.</p>
+<nav><a href="#read">Read first</a><a href="#decisions">Decisions</a><a href="#arch">Architecture</a><a href="#sigs">Signatures</a><a href="#steps">Steps</a><a href="#dont">Do NOT</a><a href="#dod">Definition of Done</a></nav>
+
+<h2 id="read">0. Read before writing any code</h2>
+<ul>
+<li><code>CLAUDE.md</code>. The rules that bite most: Swift 6, no third-party deps, Mochi drawn in code, never block Claude Code, never approve without an explicit click, 0 % CPU when hidden, bundle id unchanged, pill IDs never renamed.</li>
+<li><b>Visual and motion truth:</b> <code>design/prototype/assistant-multi-agent-prototype.html</code>, variant <b>E</b>, motion <b>1 · Particle hand-off</b>.</li>
+<li><b>Panel states for one agent:</b> <code>design/prototype/assistant-layer-prototype.html</code>, variant <b>D · Quiet Spotlight</b>.</li>
+<li><code>docs/SPEC.md</code> (French) for the island's existing behaviour.</li>
+</ul>
+
+<h2 id="decisions">Product decisions (locked)</h2>
+<ol>
+<li><b>Placement:</b> replaces the closed (compact) island and the expanded home. The panel also takes over <code>.approval</code>, <code>.question</code>, <code>.error</code> and <code>.finished</code>. Every other view ships unchanged.</li>
+<li><b>One Mochi per agent session</b>, keyed by <code>session_id</code>, including Claude Code in a plain terminal. Several approvals can wait at once.</li>
+<li><b>Main spot order:</b> clicked agent, then oldest agent that needs you, then the agent of the front window's workspace, then the previous main, then the most recently active.</li>
+<li><b>Quiet by default:</b> the panel opens on its own only for needs-you, blocked or done. You can also summon it with a click on the notch or ⌃⌥Space.</li>
+<li><b>Bar:</b> answers the main agent, and starts new <b>OpenCode</b> tasks in its folder. It can't start Claude Code.</li>
+<li><b>Voice:</b> hold <b>⌥ alone</b> to talk, using on-device speech. Releasing sends.</li>
+<li><b>Motion:</b> the particle hand-off. Only the main Mochi travels; small Mochis recolour.</li>
+<li>Interface copy is <b>English</b>.</li>
+</ol>
+
+<h2 id="arch">Architecture</h2>
+<pre><code>HookServer ──(every event with session_id)──► AgentSessionStore (pure reducer, in AppState)
+                                                   │
+WorkspaceContextTracker (AXObserver + matcher) ────┤
+                                                   ▼
+                     AssistantLogic (pure): MainAgentPicker, AttentionQueue, SubSlotOrder
+                                                   │
+                      AssistantModel (@MainActor ObservableObject, presentation only)
+                                                   │
+                 AssistantStrip (compact) ── AssistantMainMochi (one instance) ── AssistantPanelView (expanded)</code></pre>
+<div class="box">
+<p><b>Sessions live in a new layer beside the pill layer.</b> <code>AgentTask</code> and everything that reads it stay unchanged, which keeps the blast radius small.</p>
+<p><b>Pure logic</b> goes in standalone files with no AppKit or SwiftUI imports, tested with the repo's <code>swiftc</code> script pattern.</p>
+<p><b>Reuse:</b> <code>BotEngine</code>, <code>HarnessMochiView</code> (colour, hop, pause), <code>HarnessMotion</code> constants, the pill-flight technique, <code>IslandShape</code>, <code>openSpring</code>/<code>closeEase</code>, <code>FileDiff</code>, <code>AskQuestion</code>, <code>OpenCodeChat.run</code>, the <code>WindowContextCapture</code> AX read, and <code>HotKeyCenter</code>.</p>
+</div>
+
+<h3>New files</h3>
+<table>
+<tr><th>File</th><th>Purpose</th></tr>
+<tr><td><code>AgentSession.swift</code></td><td>Session types plus a value-type reducer. Pure.</td></tr>
+<tr><td><code>AssistantLogic.swift</code></td><td>Main picker, attention queue and sub slot order. Pure.</td></tr>
+<tr><td><code>WorkspaceTitleMatcher.swift</code></td><td>Matches a window title to a workspace. Pure.</td></tr>
+<tr><td><code>WorkspaceContextTracker.swift</code></td><td>AXObserver on the front app. Publishes the workspace after a 1 s dwell.</td></tr>
+<tr><td><code>AssistantModel.swift</code></td><td>Presentation state.</td></tr>
+<tr><td><code>AssistantStrip.swift</code></td><td>The compact strip of sub slots.</td></tr>
+<tr><td><code>AssistantMainMochi.swift</code></td><td>The one main Mochi, alive in both modes.</td></tr>
+<tr><td><code>AssistantPanelView.swift</code></td><td>The expanded panel: header, need card and bar.</td></tr>
+<tr><td><code>AssistantHandoff.swift</code></td><td>Flight, burst, colour blend and wash.</td></tr>
+<tr><td><code>VoiceInput.swift</code></td><td>On-device speech recognition and the ⌥-hold monitor.</td></tr>
+<tr><td>3 tests + 3 scripts</td><td>Session, logic and title matcher, wired into CI.</td></tr>
+</table>
+<h3>Removed in Step 9</h3>
+<p>The v1 two-card UI: <code>HarnessVoiceView</code>, <code>HarnessWorkspacePill</code>, <code>HarnessTickerView</code>, <code>HarnessRiserStrip</code>, <code>VoiceBarView</code>, <code>VoiceHarnessModel</code>, <code>ThreadStore</code>, <code>ThreadHistoryPopup</code>, <code>SessionSummaryView</code> and <code>WorkspaceRouting</code>, plus their tests, scripts, CI steps and the old TASKPLAN. The flight view and anchors move to <code>AssistantHandoff.swift</code> first.</p>
+<p>These are kept: <code>HarnessMochiView</code> (extended), <code>HarnessMotion</code> (pruned), the OpenCode files and the <code>mochi_XX.wav</code> sounds.</p>
+
+<h2 id="sigs">Cross-module signatures (pinned)</h2>
+<pre><code>enum AgentKind: String, Sendable { case claudeCode, openCode, codex, gemini, cursor, antigravity, other }
+enum SessionPhase: String, Sendable { case thinking, working, approval, question, blocked, finished, idle }
+struct AgentSession: Identifiable, Equatable, Sendable {
+    let id: String; var kind: AgentKind; var cwd: String; var workspace: String; var colorHex: String
+    var phase: SessionPhase; var steps: [String]; var lastPrompt: String?; var finalLine: String?
+    var attentionAt: Date?; var finishedSeen: Bool; var lastEventAt: Date
+}
+enum SessionEvent: Sendable {
+    case start, end, prompt(String), toolStart(step: String), toolEnd, toolFailed(step: String)
+    case approvalRequested, questionAsked, notification(String), stop(finalLine: String?), stopFailure, interrupt
+}
+struct AgentSessionStore: Equatable, Sendable {
+    private(set) var sessions: [String: AgentSession]
+    mutating func apply(_ event: SessionEvent, sessionId: String, kind: AgentKind, cwd: String, colorHex: String, now: Date)
+    mutating func markSeen(_ sessionId: String)
+    mutating func prune(now: Date, idleFor: TimeInterval)
+}
+enum MainAgentPicker { static func pick(sessions: [AgentSession], selectedId: String?, contextWorkspace: String?, previousMainId: String?) -> String? }
+enum AttentionQueue  { static func order(_ sessions: [AgentSession]) -> [AgentSession] }
+enum SubSlotOrder    { static func update(order: [String], alive: [String], oldMain: String?, newMain: String?) -> (order: [String], recolourIndex: Int?) }
+enum WorkspaceTitleMatcher { static func match(title: String, workspaces: [(name: String, cwd: String)]) -> String? }
+
+// HookServer (Step 4)
+func sendApprovalDecision(_ decision: String, sessionId: String)
+func sendQuestionAnswers(_ answers: [String: Any], sessionId: String)</code></pre>
+
+<h2 id="steps">Steps</h2>
+<p class="muted">Each step builds, passes its check, and gets its own commit. The build command is:<br><code>cd NotchBuddy &amp;&amp; xcodegen &amp;&amp; xcodebuild -project NotchBuddy.xcodeproj -scheme NotchBuddy -configuration Debug build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO</code>, and it should end with <code>** BUILD SUCCEEDED **</code>. Re-run <code>xcodegen</code> after adding or removing Swift files.</p>
+
+<div class="step"><h3>Step 0 · Snapshot the branch as it is</h3>
+<p>Commit the existing uncommitted work in logical groups: (a) the sounds and the greet voice, (b) the OpenCode integration, (c) the v1 harness UI with its tests, docs and prototypes, (d) anything clearly separate.</p>
+<p class="acct"><span class="lbl">Account for</span><code>voice-mochi/</code> stays untracked and untouched. If a hunk doesn't fit one group, put it in the group it serves and report it.</p>
+<p class="acc"><span class="lbl">Acceptance</span><code>git status --short</code> shows only <code>voice-mochi/</code> and this plan, and the build succeeds.</p></div>
+
+<div class="step"><h3>Step 1 · Session model (pure, tested)</h3>
+<p>The reducer maps each event to a phase:</p>
+<ul>
+<li>prompt → thinking</li>
+<li>toolStart → working (steps capped at 40)</li>
+<li>toolFailed → working, with a "⚠" step</li>
+<li>approvalRequested → approval</li>
+<li>questionAsked → question</li>
+<li>a notification mentioning "rate limit" → blocked</li>
+<li>a notification ending in "?" → question</li>
+<li>stop → finished, unseen</li>
+<li>stopFailure → blocked</li>
+<li>interrupt → idle</li>
+<li>end → removed</li>
+</ul>
+<p><code>attentionAt</code> is set when a session enters a needs-you phase. An unknown session id creates the session.</p>
+<p class="acct"><span class="lbl">Account for</span>Two sessions in the same folder stay separate. <code>end</code> on an unknown session does nothing. <code>prune</code> never removes a session that is holding an approval or question.</p>
+<p class="acc"><span class="lbl">Acceptance</span><code>bash scripts/test-agent-session.sh</code> exits 0.</p></div>
+
+<div class="step"><h3>Step 2 · Picker, attention queue, slot order (pure, tested)</h3>
+<p>The picker follows decision 3. Within the context workspace, the latest <code>lastEventAt</code> wins.</p>
+<p>The slot order keeps every surviving sub in its slot. If the new main was a sub and the old main is still alive, the old main takes the new main's slot, and that index is returned for recolouring.</p>
+<p class="acct"><span class="lbl">Account for</span>No sessions; a selected session that died; ties on <code>attentionAt</code>; the main session dying, in which case the gap closes with no recolour.</p>
+<p class="acc"><span class="lbl">Acceptance</span><code>bash scripts/test-assistant-logic.sh</code> exits 0.</p></div>
+
+<div class="step"><h3>Step 3 · Feed sessions from HookServer</h3>
+<p>Every event with a <code>session_id</code> goes into <code>AppState.sessionStore</code>. This happens <b>before</b> the pill routing's early return, so plain terminals count too.</p>
+<ul>
+<li>The kind comes from <code>coucou_agent</code> or the Cursor bundle id. Anything else is Claude Code.</li>
+<li>The colour comes from <code>IslandConst.colorForProject</code>.</li>
+<li>Diffs are also stored per session in <code>sessionFileDiffs</code>.</li>
+<li>Sessions idle for 15 min are pruned by a timer that only runs while sessions exist.</li>
+</ul>
+<p class="br"><span class="lbl">Blast radius</span>Pill behaviour (VS Code, Cursor, Codex, external) must not change.</p>
+<p class="acct"><span class="lbl">Account for</span>Gemini and Antigravity events arrive already normalised. OpenCode's Stop has no final line. Events without a <code>session_id</code> are ignored.</p>
+<p class="acc"><span class="lbl">Acceptance</span>The build succeeds. Run a plain-Terminal <code>claude</code> session: the log shows thinking → working → finished. A VS Code session at the same time appears as a second session, and its pill is unchanged.</p></div>
+
+<div class="step"><h3>Step 4 · Several approvals and questions at once</h3>
+<p>The pending approval and question file descriptors become dictionaries keyed by session id, each with its own 115 s timeout.</p>
+<ul>
+<li>Remove the path where a second request displaces the first.</li>
+<li>Use the pinned send signatures.</li>
+<li><code>pendingApproval</code> and <code>pendingQuestion</code> become computed and get-only, returning the oldest item. The compiler will then point at every writer.</li>
+</ul>
+<p class="br"><span class="lbl">Blast radius first</span>Enumerate every caller and reader: <code>IslandViewContent</code>, <code>VoiceHarnessModel</code>, the FSM's <code>isHeldOpen</code>, the <code>goToAlert</code> shortcut and <code>focusBeforeApproval</code>. Confirm there is exactly one decision path.</p>
+<p>Plain-terminal Claude Code approvals and questions are now held and shown. OpenCode approvals stay answered "ask".</p>
+<p class="acct"><span class="lbl">Account for</span>The fd closing; a matching PostToolUse or Stop clearing only that session's card; a late decision being a no-op; no blind keyboard approval.</p>
+<p class="acc"><span class="lbl">Acceptance</span>Two sessions each wait for an approval. Allowing one leaves the other waiting. A 2-minute timeout falls back to the terminal for that session only.</p></div>
+
+<div class="step"><h3>Step 5 · What the user is working on</h3>
+<p>The tracker reacts to app activation, plus an <code>AXObserver</code> for focused-window and title changes. It reads the focused window title, matches it to a live session's workspace, and publishes the result after a <b>1.0 s</b> dwell. It never polls.</p>
+<p class="acct"><span class="lbl">Account for</span>No Accessibility permission, or the APPSTORE build: the result is nil and the picker falls through. The observer is removed when there are no sessions or the island is hidden. Coucou's own windows are ignored. Matching is by whole path component, longest first, so <code>app</code> doesn't match <code>app-web</code>. Path-like terminal titles are matched too.</p>
+<p class="acc"><span class="lbl">Acceptance</span><code>bash scripts/test-title-matcher.sh</code> exits 0. Switching between Ghostty on A and VS Code on B moves the context about 1 s after each switch.</p></div>
+
+<div class="step"><h3>Step 6 · The quiet strip (replaces compact)</h3>
+<p>In compact mode, the main Mochi sits left of the camera and the sub slots sit right of it, replacing <code>BotPlacement</code>'s compact Mochi and <code>CompactMiniGrid</code>.</p>
+<ul>
+<li><b>Main:</b> the resting diameter × 1.25, capped at the notch height − 4. Its centre is 30 pt outside the notch's left edge.</li>
+<li><b>Subs:</b> about 0.68 × the main diameter, spaced 26 pt, starting 22 pt right of the notch. At most 5 are shown, then a <code>+N</code>.</li>
+<li><b>Width:</b> the notch width + 2 × max(56, subs × 26 + 26), so the island stays symmetric.</li>
+<li><b>Status dots:</b> amber for approval or question, red for blocked, green for finished and unseen.</li>
+</ul>
+<p>The main Mochi is <b>one view instance alive in both modes</b>, wrapping <code>HarnessMochiView</code>. The slot Mochis use a wrapper whose colour can change, instead of editing <code>MiniBotCanvasView</code>.</p>
+<p class="acct"><span class="lbl">Account for</span>Every timeline pauses when hidden. Macs without a notch use the same layout around the virtual notch. Clicking a sub selects it and opens the panel.</p>
+<p class="acc"><span class="lbl">Acceptance</span>Three sessions show as one main and two subs. Main follows the focused window within about 1 s. With no sessions, the island is hidden.</p></div>
+
+<div class="step"><h3>Step 7 · The panel</h3>
+<p><code>.overview</code>, <code>.approval</code>, <code>.question</code>, <code>.error</code> and <code>.finished</code> all route to <code>AssistantPanelView</code>. It is 640 wide, uses the existing expanded corner, and has a height per content, pinned in <code>AssistantMetrics</code>.</p>
+<p>The top row holds the <b>main Mochi (48 pt) at (40, 64)</b>, the task line, the agent chip and the mic. Under it is the need card:</p>
+<table>
+<tr><th>Need</th><th>Card</th></tr>
+<tr><td>approval</td><td>"N steps done", then "Can I run <code>cmd</code>?" with <b>Deny</b> and <b>Allow ⏎</b>. Keep "Always" if today's view has it.</td></tr>
+<tr><td>question</td><td>The <code>AskQuestion</code> options, plus free text if the question allows it.</td></tr>
+<tr><td>blocked</td><td>"I hit an error I can't get past on my own.", the error in mono, and <b>Open in terminal</b>. There is no Try again.</td></tr>
+<tr><td>finished</td><td>The final line, or "Done.", the files with +/− counts, <b>Open diff</b> and <b>Got it</b>.</td></tr>
+<tr><td>summoned, nothing pending</td><td>The bar row only.</td></tr>
+</table>
+<p><b>Open rules:</b></p>
+<ul>
+<li>The panel is open if it was summoned, if a Mochi was selected, or if there's a need whose signature isn't the dismissed one.</li>
+<li>Esc dismisses it. A new need reopens it.</li>
+<li>A finished card folds after 8 s unless it's hovered or the bar has focus.</li>
+<li>Hover no longer expands the island. A click or ⌃⌥Space summons it.</li>
+<li>Approvals hold the island open, as they do today.</li>
+</ul>
+<p class="acct"><span class="lbl">Account for</span>Needs are queued in order. Timeouts remove their card. ⏎ only works on a visible approval. Only one card shows at a time.</p>
+<p class="acc"><span class="lbl">Acceptance</span>The panel opens on A's approval. B's done card waits until A is answered. Esc hides the panel and a new need reopens it. The done card folds after 8 s.</p></div>
+
+<div class="step"><h3>Step 8 · Motion: the particle hand-off</h3>
+<p>When the main changes from X to Y:</p>
+<ol>
+<li>If Y was a sub, a dot flies from <b>Y's slot</b> to the main Mochi. It takes 0.95 s: 62 % is travel with a cubic ease-out, shrinking from 9 to 4 pt with a fading halo. Then 14 dots burst out to a 26 pt radius.</li>
+<li><b>At flight start:</b> the main colour starts blending X → Y over about 0.6 s, the wash switches colour over 0.6 s, and the text blur-swaps over 0.32 s.</li>
+<li><b>At landing:</b> the main Mochi hops in place, using <code>hopPose</code> for 0.9 s.</li>
+<li><b>After landing:</b> Y's slot, which never moved, recolours to X.</li>
+</ol>
+<p>If Y wasn't a sub, there's no flight: the colour changes and the Mochi hops.</p>
+<p><b>Wash:</b> a radial gradient centred on the main Mochi at (40, 64), radius about 70 % × 120 % of the panel, opacity 0.34, fading to clear at 70 %. It only shows while expanded.</p>
+<p><b>Strip ↔ panel:</b> only the main Mochi travels, using <code>timingCurve(0.25, 0.8, 0.25, 1, 0.35)</code>. Subs stay in the strip and fade over 0.2 s, never sliding. The island shape keeps its spring and ease.</p>
+<p class="acct"><span class="lbl">Account for</span>A second hand-off starting mid-flight; a hand-off while hidden, which just applies the end state; the overlay being unmounted when idle.</p>
+<p class="acc"><span class="lbl">Acceptance</span>Clicking a sub plays the dot, the blend during flight and the hop on landing, and the clicked slot becomes the old main. Nothing else moves. A context switch and an approval elevation play the same hand-off.</p></div>
+
+<div class="step"><h3>Step 9 · Remove the v1 harness</h3>
+<p>Delete the files in the removed list, their CI steps, the old TASKPLAN and the unused <code>HarnessMotion</code> groups. Update <code>docs/SPEC.md</code> (French): one section for the strip, panel, main rule, hand-off and bar, and an updated §2.</p>
+<p class="acct"><span class="lbl">Account for</span>Grep every deleted symbol first.</p>
+<p class="acc"><span class="lbl">Acceptance</span>The build succeeds, all CI test scripts exit 0, and grepping for <code>VoiceHarnessModel|ThreadStore|KeywordRouter</code> finds nothing.</p></div>
+
+<div class="step"><h3>Step 10 · The bar: OpenCode tasks</h3>
+<p>The placeholder reads <code>New OpenCode task in &lt;workspace&gt;…</code>. Enter calls <code>OpenCodeChat.run</code> with the main session's <code>cwd</code>, fire-and-forget, and the new session shows up as a Mochi. The panel closes on send.</p>
+<p class="acct"><span class="lbl">Account for</span>No main session (fall back to the context folder, or disable the bar); the CLI missing (an inline error); empty text; a question waiting (the question card replaces the bar).</p>
+<p class="acc"><span class="lbl">Acceptance</span>An <code>opencode</code> process runs in the right cwd, and a new Mochi appears.</p></div>
+
+<div class="step"><h3>Step 11 · Voice: hold ⌥ to talk</h3>
+<p>Use <code>SFSpeechRecognizer</code> on-device with an <code>AVAudioEngine</code> tap, and stream partial results into the bar.</p>
+<ul>
+<li>Listening starts after <b>⌥ alone</b> has been held for <b>300 ms</b>. Any other key cancels, so ⌥-shortcuts keep working.</li>
+<li>Releasing sends the transcript. Esc cancels.</li>
+<li>Add the mic and speech usage strings to <code>project.yml</code>, plus the audio-input entitlement if the app is sandboxed. Commit the regenerated Info.plist.</li>
+</ul>
+<p class="acct"><span class="lbl">Account for</span>Permission denied, or no on-device recogniser: show a one-line notice. The engine and tap are stopped on every exit path. Audio never leaves the Mac.</p>
+<p class="acc"><span class="lbl">Acceptance</span>Hold, speak and release: an OpenCode task starts. ⌃⌥Space still works. CPU is back to about 0 % within 5 s.</p></div>
+
+<h2 id="dont">Out of scope / Do NOT</h2>
+<ul class="dont">
+<li>Touch <code>windows/</code>, <code>voice-mochi/</code>, or any view that ships unchanged.</li>
+<li>Rename pill IDs or the bundle id, or change the signatures of <code>AgentTask</code> or <code>MiniBotCanvasView</code>.</li>
+<li>Add dependencies, network calls or telemetry. Speech stays on-device.</li>
+<li>Approve, deny or answer anything without an explicit action on a visible card.</li>
+<li>Start Claude Code from the app, or add OpenCode approval cards.</li>
+<li>Add gestures, text-to-speech, thread history or new Settings screens.</li>
+<li>Leave timelines, timers or AX observers running while hidden.</li>
+<li>Overwrite <code>~/.claude/settings.json</code>.</li>
+<li>Bump the version or edit CHANGELOG/README. This isn't a release.</li>
+</ul>
+
+<h2 id="dod">Definition of Done</h2>
+<ul class="dod">
+<li>Steps 0–11 committed, one logical change each.</li>
+<li>The build succeeds, and every CI test script exits 0, including the three new ones.</li>
+<li>Three sessions (two in plain terminals plus OpenCode) show as three Mochis, and two approvals resolve independently.</li>
+<li>The panel opens by itself only for approval, question, blocked or finished. Esc and the 8 s fold behave as specified.</li>
+<li>Main follows the front window within about 1 s, and everything still works without Accessibility.</li>
+<li>The hand-off matches prototype E, motion 1.</li>
+<li>The bar starts OpenCode tasks, and holding ⌥ works without breaking ⌥-shortcuts.</li>
+<li>CPU is about 0 % when hidden.</li>
+<li>The unchanged views look exactly as they do on <code>main</code>.</li>
+<li>SPEC is updated, and no references to the v1 harness remain.</li>
+<li>The report lists every deviation.</li>
+</ul>
+</main>
+</body>
+</html>
