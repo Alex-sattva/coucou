@@ -149,6 +149,7 @@ final class IslandWindowController: NSWindowController {
         wireFSM()
         wireAssistantPanel()
         OptionHoldMonitor.shared.start()
+        WakeWordListener.shared.start()
 
         // Make panel key whenever the prompt/chat view becomes active
         // (nonactivatingPanel never auto-becomes key, but TextField needs it)
@@ -213,6 +214,8 @@ final class IslandWindowController: NSWindowController {
         // longer pins the island, so it can fold; the request stays pending until it times out.
         // Without sessions the shipping rule applies.
         fsm.isHeldOpen = {
+            // A request on its way ("Thinking…", "Sent to…") holds the island, sessions or not.
+            if AssistantModel.shared.isOpen && AssistantModel.shared.barStatus != nil { return true }
             if !AppState.shared.sessionStore.sessions.isEmpty { return AssistantModel.shared.holdsIslandOpen }
             return AppState.shared.pendingApproval != nil || AppState.shared.pendingQuestion != nil
         }
@@ -573,9 +576,16 @@ final class IslandWindowController: NSWindowController {
         }
         // ⎋ Escape — focused views (.onExitCommand) have first crack; fall back to collapse
         if event.keyCode == 53 && raw.isEmpty {
+            // The panel's bar field would swallow Esc as cancelOperation:, so the panel closes
+            // first. Only the question card keeps the old order: Esc closes its "Other" field.
+            var questionCard = false
+            if case .question = AssistantModel.shared.panelContent { questionCard = true }
+            if !questionCard && dismissAssistantPanel() { return true }
             let consumed = NSApp.sendAction(Selector(("cancelOperation:")), to: nil, from: nil)
             if !consumed && dismissAssistantPanel() { return true }
-            if !consumed && state.mode == .expanded && !state.isPinned {
+            // Home drawn as the panel without being summoned: the bar field eats Esc, so collapse anyway.
+            let onPanel = !questionCard && AssistantModel.shared.routesToPanel(state.view)
+            if (!consumed || onPanel) && state.mode == .expanded && !state.isPinned {
                 collapse()
             }
             return true

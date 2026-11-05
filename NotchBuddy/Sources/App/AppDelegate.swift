@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // would keep going after quit (the 120 s watchdog only
         // covers a run that is still tracked).
         OpenCodeRunRegistry.shared.stopAll()
+        // Same for the workers Mochi runs itself: no `claude -p` stream process outlives the app.
+        WorkerManager.shared.stopAllNow()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

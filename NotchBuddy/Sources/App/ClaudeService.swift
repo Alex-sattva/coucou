@@ -108,7 +108,7 @@ final class KeychainStore: @unchecked Sendable {
 final class ClaudeService {
     static let shared = ClaudeService()
 
-    private let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
+    private let endpoint = URL(string: ProviderEndpoints.anthropic)!
     private let anthropicVersion = "2023-06-01"
 
     // MARK: - Model list
@@ -134,7 +134,7 @@ final class ClaudeService {
     /// Fetches Gemini models via the OpenAI-compatible endpoint.
     /// Strips the "models/" prefix that the API sometimes returns and filters non-chat models.
     static func fetchGoogleModels(apiKey: String) async -> [(id: String, label: String)] {
-        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/openai/models") else { return [] }
+        guard let url = URL(string: "\(ProviderEndpoints.google)/models") else { return [] }
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         guard let (data, response) = try? await URLSession.shared.data(for: req),
@@ -154,7 +154,7 @@ final class ClaudeService {
     /// Fetches chat models from the OpenAI API, sorted newest-first by creation date.
     /// Excludes non-chat model families.
     static func fetchOpenAIModels(apiKey: String) async -> [(id: String, label: String)] {
-        guard let url = URL(string: "https://api.openai.com/v1/models") else { return [] }
+        guard let url = URL(string: "\(ProviderEndpoints.openAI)/models") else { return [] }
         var req = URLRequest(url: url, timeoutInterval: 10)
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         guard let (data, response) = try? await URLSession.shared.data(for: req),
@@ -281,8 +281,8 @@ final class ClaudeService {
             baseURL = LocalChat.normaliseURL(state.lmstudioServerURL)
         } else {
             switch provider {
-            case .google:  baseURL = "https://generativelanguage.googleapis.com/v1beta/openai"
-            case .openai:  baseURL = "https://api.openai.com/v1"
+            case .google:  baseURL = ProviderEndpoints.google
+            case .openai:  baseURL = ProviderEndpoints.openAI
             case .anthropic, .ollama, .lmstudio, .opencode: baseURL = ""
             }
         }

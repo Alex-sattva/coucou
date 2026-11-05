@@ -66,6 +66,105 @@ final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(voiceEnabled, forKey: "voiceEnabled") }
     }
 
+    // "Hey Mochi" wake word: keeps the microphone open while on, so it is off by default.
+    @Published var wakeWordEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(wakeWordEnabled, forKey: "wakeWordEnabled") }
+    }
+
+    // After a spoken request Mochi answers out loud (on-device speech): what was sent, or what went wrong.
+    @Published var spokenRepliesEnabled: Bool = true {
+        didSet { UserDefaults.standard.set(spokenRepliesEnabled, forKey: "spokenRepliesEnabled") }
+    }
+
+    /// Mochi's own update lines (a finished Mochi-started session, the pile-up digest) are read
+    /// aloud only when this is on. Text only by default. Separate from `spokenRepliesEnabled`.
+    @Published var speakMochiUpdates: Bool = false {
+        didSet { UserDefaults.standard.set(speakMochiUpdates, forKey: "speakMochiUpdates") }
+    }
+
+    // New sessions: the CLI for projects with no setting and no history, the terminal they open
+    // in, and each project's own CLI (folder path → ProjectCLI raw value).
+    @Published var defaultCLI: String = ProjectCLI.claudeCode.rawValue {
+        didSet { UserDefaults.standard.set(defaultCLI, forKey: "defaultCLI") }
+    }
+    @Published var terminalApp: String = TerminalApp.terminal.rawValue {
+        didSet { UserDefaults.standard.set(terminalApp, forKey: "terminalApp") }
+    }
+    /// What understands the bar and voice: "rules" (offline) or "claude" (Messages API).
+    // "ask" shows every permission card; "auto" lets Mochi approve non-sensitive ones (PermissionPolicy).
+    @Published var permissionMode: String = "ask" {
+        didSet { UserDefaults.standard.set(permissionMode, forKey: "permissionMode") }
+    }
+
+    @Published var routerBackend: String = "rules" {
+        didSet { UserDefaults.standard.set(routerBackend, forKey: "routerBackend") }
+    }
+    @Published var projectCLIs: [String: String] = [:] {
+        didSet { UserDefaults.standard.set(projectCLIs, forKey: "projectCLIs") }
+    }
+    /// Sessions Mochi started itself, newest last, capped at 100 (`mochiWorkerRuntimes` follows it). Not @Published.
+    private(set) var mochiSessionIds: [String] = [] {
+        didSet { UserDefaults.standard.set(mochiSessionIds, forKey: "mochiSessionIds") }
+    }
+    func rememberMochiSession(_ id: String) {
+        mochiSessionIds = MochiAware.remembering(id, in: mochiSessionIds)
+    }
+
+    /// Sessions Mochi runs itself as workers (no terminal), and which runtime owns each
+    /// (`ProjectCLI.rawValue`). Same 100 cap as `mochiSessionIds`, which decides who stays.
+    /// Not @Published: no view reads it.
+    private(set) var mochiWorkerRuntimes: [String: String] = [:] {
+        didSet { UserDefaults.standard.set(mochiWorkerRuntimes, forKey: "mochiWorkerRuntimes") }
+    }
+    func rememberMochiWorker(_ id: String, runtime: ProjectCLI) {
+        rememberMochiSession(id)
+        var map = mochiWorkerRuntimes
+        map[id] = runtime.rawValue
+        mochiWorkerRuntimes = map.filter { mochiSessionIds.contains($0.key) }
+    }
+    /// The session goes back to the user (hand-off to a terminal): Mochi no longer drives it.
+    func releaseMochiWorker(_ id: String) {
+        guard mochiWorkerRuntimes[id] != nil else { return }
+        var map = mochiWorkerRuntimes
+        map[id] = nil
+        mochiWorkerRuntimes = map
+    }
+
+    // MARK: Mochi assistant (the brain): its own model, independent of Chat. Off until the user turns it on.
+    @Published var mochiBrainEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(mochiBrainEnabled, forKey: "mochiBrainEnabled") }
+    }
+    @Published var mochiBrainProvider: BrainProvider = .chat(.anthropic) {
+        didSet { UserDefaults.standard.set(mochiBrainProvider.storage, forKey: "mochiBrainProvider") }
+    }
+    /// Empty = the provider's default model.
+    @Published var mochiBrainModel: String = "" {
+        didSet { UserDefaults.standard.set(mochiBrainModel, forKey: "mochiBrainModel") }
+    }
+    var mochiBrainEffectiveModel: String {
+        let m = mochiBrainModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return m.isEmpty ? mochiBrainProvider.defaultModel : m
+    }
+
+    /// Default model for workers Mochi starts, per runtime: OpenCode `provider/model` (empty = OpenCode's
+    /// own default), Claude Code alias (empty = Claude Code's default).
+    @Published var workerModelOpenCode: String = "" {
+        didSet { UserDefaults.standard.set(workerModelOpenCode, forKey: "workerModelOpenCode") }
+    }
+    @Published var workerModelClaude: String = "" {
+        didSet { UserDefaults.standard.set(workerModelClaude, forKey: "workerModelClaude") }
+    }
+    func defaultWorkerModel(for runtime: ProjectCLI) -> ModelRef? {
+        switch runtime {
+        case .openCode: return ModelRef.openCode(catalogId: workerModelOpenCode)
+        case .claudeCode: return ModelRef.claude(workerModelClaude)
+        }
+    }
+
+    func workerRuntime(for id: String) -> ProjectCLI? {
+        mochiWorkerRuntimes[id].flatMap(ProjectCLI.init(rawValue:))
+    }
+
     // Mochi outfit selection — persisted
     @Published var mochiOutfitSelection: Outfit = .auto {
         didSet { Outfit.stored = mochiOutfitSelection }
@@ -140,7 +239,8 @@ final class AppState: ObservableObject {
 
     /// Fetches models for `provider` if not already loaded or loading.
     /// Sets `providerModelFetchError` if the key is absent or the request fails.
-    func fetchModelsIfNeeded(for provider: ChatProvider) {
+    /// `clampChat: false` (Mochi's brain picker) only fills the list: Chat's own selected model is left alone.
+    func fetchModelsIfNeeded(for provider: ChatProvider, clampChat: Bool = true) {
         guard !loadingProviderModels.contains(provider),
               fetchedProviderModels[provider] == nil else { return }
         // Local providers: fetch from server URL (no API key needed)
@@ -166,7 +266,7 @@ final class AppState: ObservableObject {
                 case .success(let models):
                     fetchedProviderModels[provider] = models
                     let current = provider == .ollama ? ollamaChatModel : lmstudioChatModel
-                    if !models.contains(where: { $0.id == current }) {
+                    if clampChat, !models.contains(where: { $0.id == current }) {
                         let first = models.first!.id
                         if provider == .ollama { ollamaChatModel = first }
                         else                   { lmstudioChatModel = first }
@@ -186,7 +286,7 @@ final class AppState: ObservableObject {
                     let models = try await OpenCodeChat.fetchModels()
                     fetchedProviderModels[provider] = models
                     // Clamp the saved model to the live catalog if it vanished.
-                    if !models.contains(where: { $0.id == opencodeChatModel }),
+                    if clampChat, !models.contains(where: { $0.id == opencodeChatModel }),
                        !disabledOpencodeModels.contains(opencodeChatModel) {
                         let first = models.first(where: { !disabledOpencodeModels.contains($0.id) })?.id
                             ?? models.first!.id
@@ -221,6 +321,7 @@ final class AppState: ObservableObject {
             } else {
                 fetchedProviderModels[provider] = models
                 switch provider {
+                case _ where !clampChat: break
                 case .anthropic:
                     if !models.contains(where: { $0.id == claudeModel }) {
                         claudeModel = models.first(where: { $0.id.contains("sonnet") })?.id ?? models.first!.id
@@ -482,6 +583,21 @@ final class AppState: ObservableObject {
 
         if let v = ud.object(forKey: "soundEnabled") as? Bool   { soundEnabled = v }
         if let v = ud.object(forKey: "voiceEnabled") as? Bool   { voiceEnabled = v }
+        if let v = ud.object(forKey: "wakeWordEnabled") as? Bool { wakeWordEnabled = v }
+        if let v = ud.object(forKey: "spokenRepliesEnabled") as? Bool { spokenRepliesEnabled = v }
+        if let v = ud.object(forKey: "speakMochiUpdates") as? Bool { speakMochiUpdates = v }
+        if let v = ud.string(forKey: "defaultCLI") { defaultCLI = v }
+        if let v = ud.string(forKey: "terminalApp") { terminalApp = v }
+        if let v = ud.string(forKey: "routerBackend") { routerBackend = v }
+        if let v = ud.string(forKey: "permissionMode") { permissionMode = v }
+        if let v = ud.dictionary(forKey: "projectCLIs") as? [String: String] { projectCLIs = v }
+        if let v = ud.stringArray(forKey: "mochiSessionIds") { mochiSessionIds = v }
+        if let v = ud.dictionary(forKey: "mochiWorkerRuntimes") as? [String: String] { mochiWorkerRuntimes = v }
+        if let v = ud.object(forKey: "mochiBrainEnabled") as? Bool { mochiBrainEnabled = v }
+        if let v = ud.string(forKey: "mochiBrainProvider"), let p = BrainProvider(storage: v) { mochiBrainProvider = p }
+        if let v = ud.string(forKey: "mochiBrainModel") { mochiBrainModel = v }
+        if let v = ud.string(forKey: "workerModelOpenCode") { workerModelOpenCode = v }
+        if let v = ud.string(forKey: "workerModelClaude") { workerModelClaude = v }
         if let v = ud.object(forKey: "soundVolume")  as? Double { soundVolume  = v }
         mochiOutfitSelection = Outfit.stored
         if let v = ud.string(forKey: "claudeModel"),

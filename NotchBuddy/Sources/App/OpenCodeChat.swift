@@ -499,69 +499,30 @@ enum OpenCodeChat {
         return out.sorted { $0.id < $1.id }
     }
 
-    /// Live catalog from a private OpenCode server.
+    /// Live catalog from a private OpenCode server (the same start-up Mochi's workers use).
     static func fetchLiveModels() async throws -> [(id: String, label: String)] {
         guard let cli = cliURL() else { throw ChatError.cliNotFound }
         ensureSandboxAuth()
-        let port = Int.random(in: 18000..<19000)
-        let proc = Process()
-        proc.executableURL = cli
-        proc.arguments = ["serve", "--port", "\(port)", "--hostname", "127.0.0.1"]
         var env = ProcessInfo.processInfo.environment
         env["TMPDIR"] = "/tmp"
         env["XDG_DATA_HOME"] = "/tmp/opencode-data"
         env["XDG_STATE_HOME"] = "/tmp/opencode-state"
-        proc.environment = env
-        let outPipe = Pipe()
-        proc.standardOutput = outPipe
-        proc.standardError = FileHandle.nullDevice
-        proc.standardInput = FileHandle.nullDevice
-        do { try proc.run() } catch {
+        let server: OpenCodeServerProcess
+        do {
+            server = try await OpenCodeServerLauncher.launch(cli: cli, cwd: nil, environment: env)
+        } catch OpenCodeServerLauncher.LaunchError.noPassword {
+            throw ChatError.failed("OpenCode server did not start (no password in output).")
+        } catch {
             throw ChatError.failed(error.localizedDescription)
         }
-        defer { if proc.isRunning { proc.terminate() } }
-
-        // Wait up to 10s for the "server listening … / server password …" lines.
-        let deadline = Date().addingTimeInterval(10)
-        var output = ""
-        var password: String? = nil
-        let handle = outPipe.fileHandleForReading
-        while Date() < deadline {
-            if let chunk = try? handle.availableData, !chunk.isEmpty,
-               let s = String(data: chunk, encoding: .utf8) {
-                output += s
-            }
-            if output.contains("server listening on"),
-               let range = output.range(of: "server password ") {
-                let tail = String(output[range.upperBound...])
-                password = tail.split(whereSeparator: \.isWhitespace).first.map(String.init)
-                if password != nil { break }
-            }
-            if !proc.isRunning { break }
-            try? await Task.sleep(nanoseconds: 200_000_000)
-        }
-        // Drain any remaining buffered stdout (password may arrive with listening line).
-        if password == nil, let rest = try? handle.availableData,
-           let s = String(data: rest, encoding: .utf8), !s.isEmpty {
-            output += s
-            if let range = output.range(of: "server password ") {
-                let tail = String(output[range.upperBound...])
-                password = tail.split(whereSeparator: \.isWhitespace).first.map(String.init)
-            }
-        }
-        guard let password else {
-            throw ChatError.failed("OpenCode server did not start (no password in output).")
-        }
+        defer { server.terminate() }
 
         // GET /api/model with basic auth opencode:<password>, 10s cap.
-        guard let url = URL(string: "http://127.0.0.1:\(port)/api/model") else {
+        guard let url = URL(string: "/api/model", relativeTo: server.baseURL) else {
             throw ChatError.failed("Bad model URL.")
         }
         var req = URLRequest(url: url, timeoutInterval: 10)
-        let creds = "opencode:\(password)"
-        if let data = creds.data(using: .utf8) {
-            req.setValue("Basic \(data.base64EncodedString())", forHTTPHeaderField: "Authorization")
-        }
+        req.setValue(server.authorization, forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         let data: Data
         do {
@@ -634,29 +595,5 @@ enum OpenCodeChat {
                 state.view = .note
             }
         }
-    }
-}
-
-/// Reads a pipe to end-of-file on a background queue while the child runs, so the child can
-/// never block on a full pipe buffer, and hands back everything once it has exited.
-final class PipeBuffer: @unchecked Sendable {
-    private let done = DispatchGroup()
-    private var data = Data()
-
-    func attach(_ pipe: Pipe) {
-        done.enter()
-        let handle = pipe.fileHandleForReading
-        DispatchQueue.global(qos: .utility).async { [self] in
-            // Returns at EOF: when the child (the only writer left) exits.
-            data = handle.readDataToEndOfFile()
-            done.leave()
-        }
-    }
-
-    /// Waits for the reader to reach end-of-file and returns all output. Call after the child
-    /// has exited (from the termination handler), never on the main thread.
-    func finish(_ pipe: Pipe) -> Data {
-        done.wait()
-        return data
     }
 }

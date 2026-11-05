@@ -135,6 +135,7 @@ struct SettingsView: View {
                         SettingsSidebarRow(title: "General",      icon: "gearshape.fill",                    color: "#8E939C").tag("general")
                         SettingsSidebarRow(title: "Active pills", icon: "square.grid.2x2.fill",              color: "#F5A524").tag("activepills")
                         SettingsSidebarRow(title: "Agents",       icon: "terminal.fill",                     color: "#3B9EFF").tag("agents")
+                        SettingsSidebarRow(title: "Projects",     icon: "folder.fill",                       color: "#22C55E").tag("projects")
                         SettingsSidebarRow(title: "Chat",         icon: "bubble.left.and.bubble.right.fill", color: "#E07950").tag("chat")
                         SettingsSidebarRow(title: "Integrations", icon: "puzzlepiece.extension.fill",        color: "#7C5CFF").tag("integrations")
                         SettingsSidebarRow(title: "Shortcuts",    icon: "keyboard.fill",                     color: "#6366F1").tag("shortcuts")
@@ -196,6 +197,14 @@ struct SettingsView: View {
         }
     }
 
+    /// Installed terminals, plus the stored one if it was uninstalled since (so the picker
+    /// still shows the choice instead of going blank).
+    private var terminalChoices: [TerminalApp] {
+        var list = TerminalApp.installed
+        if let stored = TerminalApp(rawValue: state.terminalApp), !list.contains(stored) { list.append(stored) }
+        return list
+    }
+
     // MARK: - Section routing
 
     private var sectionTitle: String {
@@ -203,6 +212,7 @@ struct SettingsView: View {
         case "general":      return "General"
         case "activepills":  return "Active pills"
         case "agents":       return "Agents"
+        case "projects":     return "Projects"
         case "chat":         return "Chat"
         case "integrations": return "Integrations"
         case "shortcuts":    return "Shortcuts"
@@ -214,6 +224,7 @@ struct SettingsView: View {
         switch selectedSection {
         case "activepills":  activePillsSection
         case "agents":       agentsSection
+        case "projects":     ProjectsSettingsList(model: AssistantModel.shared, state: state)
         case "chat":         chatSection
         case "integrations": integrationsSection
         case "shortcuts":    ShortcutsSettingsView()
@@ -238,6 +249,67 @@ struct SettingsView: View {
                         .frame(width: 36, alignment: .trailing)
                         .monospacedDigit()
                 }
+            }
+            .padding(6)
+        }
+
+        GroupBox("Voice") {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Listen for \u{201C}Hey Mochi\u{201D}", isOn: $state.wakeWordEnabled)
+                Text("Keeps the microphone on, on this Mac only. Say \u{201C}Hey Mochi\u{201D}, pause, then your request.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("Answer spoken requests out loud", isOn: $state.spokenRepliesEnabled)
+                Text("After you talk to Mochi, it says what it sent, or what went wrong. Uses the Mac\u{2019}s own voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle("Read Mochi\u{2019}s updates aloud", isOn: $state.speakMochiUpdates)
+                Text("Mochi says its one-line update when a session it started finishes. Off by default: the line only shows in the notch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(6)
+        }
+
+        GroupBox("Understanding") {
+            VStack(alignment: .leading, spacing: 6) {
+                let hasKey = KeychainStore.shared.get("anthropic-api-key") != nil
+                Picker("Mochi understands you with", selection: $state.routerBackend) {
+                    Text("Rules (offline)").tag("rules")
+                    Text("Claude").tag("claude").disabled(!hasKey)
+                }
+                .frame(maxWidth: 360)
+                Text(hasKey
+                     ? "Claude reads what you say or type, plus a short list of your running sessions and project folders, and picks what to do. Nothing else is sent. Without a network it falls back to the rules."
+                     : "Add an Anthropic key in Chat to use Claude.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(6)
+        }
+
+        #if !APPSTORE
+        MochiAssistantSettingsBox(state: state)
+        #endif
+
+        GroupBox("New sessions") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Default CLI", selection: $state.defaultCLI) {
+                    ForEach(ProjectCLI.allCases, id: \.rawValue) { Text($0.displayName).tag($0.rawValue) }
+                }
+                .frame(maxWidth: 280)
+                Picker("Open in", selection: $state.terminalApp) {
+                    ForEach(terminalChoices, id: \.rawValue) { t in
+                        Text(t.appURL == nil ? "\(t.displayName) (not installed \u{2014} using Terminal)" : t.displayName)
+                            .tag(t.rawValue)
+                    }
+                }
+                .frame(maxWidth: 280)
+                Text("Say \u{201C}work on <project>\u{201D} to start a session. The default CLI is for projects you haven\u{2019}t set in Projects and haven\u{2019}t used yet. The terminal is also used by \u{201C}view session\u{201D}.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(6)
         }
@@ -341,6 +413,22 @@ struct SettingsView: View {
     // MARK: - Agents section
 
     @ViewBuilder private var agentsSection: some View {
+        #if !APPSTORE
+        WorkerModelsSettingsBox(state: state)
+        #endif
+        GroupBox("Permissions") {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Approvals", selection: $state.permissionMode) {
+                    Text("Ask every time").tag("ask")
+                    Text("Auto — ask only for sensitive actions").tag("auto")
+                }
+                Text("Auto approves reads, searches, edits inside the project and read-only commands. Deleting files, git push, sudo, installs, network writes, MCP tools and anything outside the project still ask.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(6)
+        }
         GroupBox("Claude Code Hooks") {
             VStack(alignment: .leading, spacing: 10) {
                 if hookNeedsUpdate {
@@ -1493,5 +1581,82 @@ struct ShortcutRecorderButton: View {
             34:"I", 37:"L", 38:"J", 40:"K", 45:"N", 46:"M", 49:"Space", 50:"`", 27:"-"
         ]
         return map[c] ?? "·"
+    }
+}
+
+
+// MARK: - Projects
+
+/// The folders found in Claude Code's and OpenCode's history, each with the CLI that
+/// "work on <project>" starts there.
+struct ProjectsSettingsList: View {
+    @ObservedObject var model: AssistantModel
+    @ObservedObject var state: AppState
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 0) {
+                if model.knownProjects.isEmpty {
+                    Text("No projects yet. Folders show up here once you have used Claude Code or OpenCode in them.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .padding(6)
+                } else {
+                    ForEach(Array(model.knownProjects.enumerated()), id: \.element.path) { i, project in
+                        if i > 0 { Divider() }
+                        ProjectCLIRow(project: project, model: model, state: state)
+                    }
+                }
+            }
+        }
+        Text("Found in your Claude Code and OpenCode history. Automatic uses whichever you used last in that folder, else the default CLI from General.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .onAppear { model.refreshProjects() }
+    }
+}
+
+struct ProjectCLIRow: View {
+    let project: KnownProject
+    @ObservedObject var model: AssistantModel
+    @ObservedObject var state: AppState
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(project.name)
+                    .font(.system(size: 13, weight: .medium))
+                Text(displayPath)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(project.path)
+            }
+            Spacer(minLength: 8)
+            Picker("", selection: Binding(
+                get: { state.projectCLIs[project.path] ?? "" },
+                set: { model.setCLISetting(ProjectCLI(rawValue: $0), for: project.path) }
+            )) {
+                Text(automaticLabel).tag("")
+                ForEach(ProjectCLI.allCases, id: \.rawValue) { Text($0.displayName).tag($0.rawValue) }
+            }
+            .labelsHidden()
+            .frame(width: 210)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+    }
+
+    private var automaticLabel: String {
+        if let last = project.lastUsedCLI { return "Automatic (\(last.displayName))" }
+        let d = ProjectCLI(rawValue: state.defaultCLI) ?? .claudeCode
+        return "Automatic (\(d.displayName))"
+    }
+
+    private var displayPath: String {
+        let home = NSHomeDirectory()
+        return project.path.hasPrefix(home) ? "~" + project.path.dropFirst(home.count) : project.path
     }
 }

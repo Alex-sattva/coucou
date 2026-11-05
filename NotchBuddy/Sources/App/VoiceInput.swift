@@ -231,7 +231,7 @@ final class VoiceInput: ObservableObject {
     }
 
     /// Speech first, then microphone. Each is requested only while the system has not been asked yet.
-    private nonisolated static func requestAccessIfNeeded() async -> Bool {
+    nonisolated static func requestAccessIfNeeded() async -> Bool {
         switch SFSpeechRecognizer.authorizationStatus() {
         case .authorized: break
         case .notDetermined:
